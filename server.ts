@@ -1,0 +1,118 @@
+import express from 'express';
+import path from 'path';
+import dotenv from 'dotenv';
+import { createServer as createViteServer } from 'vite';
+import { GoogleGenAI } from '@google/genai';
+
+dotenv.config();
+
+const app = express();
+const PORT = 3000;
+
+// Set up server-side parsers
+app.use(express.json({ limit: '10mb' }));
+
+// Initialize GoogleGenAI SDK safely
+let ai: GoogleGenAI | null = null;
+const apiKey = process.env.GEMINI_API_KEY;
+
+if (apiKey) {
+  ai = new GoogleGenAI({
+    apiKey: apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
+} else {
+  console.warn('CRITICAL WARNING: GEMINI_API_KEY environment variable is not defined.');
+}
+
+// REST api route to process frame captures
+app.post('/api/analyze-frame', async (req, res) => {
+  try {
+    const { imageBuffer, mode } = req.body;
+
+    if (!imageBuffer) {
+      return res.status(400).json({ error: 'Missing imageBuffer parameter.' });
+    }
+
+    if (!ai) {
+      return res.status(503).json({
+        error: 'Gemini cognitive services are not initialized on the backend. Please add GEMINI_API_KEY inside the Secrets panel of Settings.',
+      });
+    }
+
+    // Determine target prompt based on requested accessibility task
+    let promptText = '';
+    switch (mode) {
+      case 'ocr':
+        promptText =
+          'Read any written signs, labels, text on screens, or door plates in this image. State what they say clearly and concisely. If no text is found, say "No written text detected in your immediate view". Keep output under 25 words.';
+        break;
+      case 'hazard':
+        promptText =
+          'Analyze this scene for any physical traps or hazards for a deaf/blind person walking (e.g. low-hanging objects, cords on floor, liquids, stairs without rails, items out of place). State the most critical trap or hazard in under 20 words. If the path looks completely safe and clear, say "Clear unhindered pathway".';
+        break;
+      case 'faces':
+        promptText =
+          'Look at any faces of individuals speaking or looking at the camera. Identify their primary facial expression and emotional mood (e.g., happy smiling, engaged, angry, confused, speaking energetically) to give the deaf user emotional feedback. State it in under 20 words. If no people are visible, say "No clear faces or speakers in immediate view".';
+        break;
+      case 'scene':
+      default:
+        promptText =
+          'Provide a short, elegant, high-fidelity spoken narration of the physical space shown in this image for a user with sensory limits (deaf/blind/impaired). Describe key objects, their distances, and the overall mood. Keep it under 30 words.';
+        break;
+    }
+
+    const imagePart = {
+      inlineData: {
+        mimeType: 'image/jpeg',
+        data: imageBuffer,
+      },
+    };
+
+    const textPart = {
+      text: promptText,
+    };
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.5-flash',
+      contents: { parts: [imagePart, textPart] },
+    });
+
+    const resultText = response.text ? response.text.trim() : 'Unrecognized scene signature.';
+    res.json({ result: resultText });
+  } catch (err: any) {
+    console.error('Gemini frame process failure:', err);
+    res.status(500).json({ error: err.message || 'Cognitive pipeline internal crash.' });
+  }
+});
+
+// Start dev or production asset servers
+async function startAppServer() {
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('Initiating Vite Dev Server Connection Express proxy...');
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    console.log('Serving production static build directory dist...');
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`SenseSync Fullstack listening at http://0.0.0.0:${PORT}`);
+  });
+}
+
+startAppServer().catch((e) => {
+  console.error('Server startup crash:', e);
+});
