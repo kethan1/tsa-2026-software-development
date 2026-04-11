@@ -1,54 +1,57 @@
-// Minimal Modbus RTU NPK Sensor Test (DE-only Control)
+// Minimal Modbus RTU NPK Sensor Test
+// DE + /RE tied together on one control pin
 
 #include <Arduino.h>
 #include <ModbusMaster.h>
 
 // ——— Pin Definitions ———
-// Tie the adapter’s /RE pin permanently to GND with a jumper.
-// Only DE gets driven by the ESP32.
-#define RS485_DE_PIN    4       // Driver-Enable
-#define RX2_PIN        16       // RO → ESP32
-#define TX2_PIN        17       // DI ← ESP32
+// Wire adapter’s DE and /RE pins together in the same breadboard row,
+// then jumper that row to this single GPIO.
+#define RS485_CTRL_PIN  4     // Controls both DE (drive enable) and /RE (receive enable)
+
+#define RX2_PIN        16     // RO → ESP32 RX2
+#define TX2_PIN        17     // DI ← ESP32 TX2
 
 // ——— Modbus Settings ———
-#define MODBUS_ID       1       // default slave ID
-#define NITROGEN_REG    0x001E  // register address for N (adjust if needed)
+#define MODBUS_ID       1     // Slave ID of the NPK sensor
+#define NITROGEN_REG    0x001E// Register address for Nitrogen reading
 
-// Create Modbus object
 ModbusMaster node;
 
-// ——— RS-485 Direction Callbacks ———
+// —— Direction-control callbacks ——
+// Before sending a frame: enable driver, disable receiver
 void preTransmission() {
-  digitalWrite(RS485_DE_PIN, HIGH);   // enable driver
-  delayMicroseconds(100);              // let it settle
+  digitalWrite(RS485_CTRL_PIN, HIGH);
+  delayMicroseconds(50);       // allow time to switch
 }
+// After sending: disable driver, enable receiver
 void postTransmission() {
-  digitalWrite(RS485_DE_PIN, LOW);    // disable driver (enable receiver)
-  delayMicroseconds(100);
+  delayMicroseconds(50);
+  digitalWrite(RS485_CTRL_PIN, LOW);
 }
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n--- Modbus NPK Sensor Test (DE-only) ---");
+  Serial.println("\n--- Modbus NPK Sensor Test (Unified DE/RE) ---");
 
-  // Configure DE pin; /RE is physically tied to GND
-  pinMode(RS485_DE_PIN, OUTPUT);
-  digitalWrite(RS485_DE_PIN, LOW);    
+  // Configure the single control pin
+  pinMode(RS485_CTRL_PIN, OUTPUT);
+  digitalWrite(RS485_CTRL_PIN, LOW);  // start in receive mode
 
-  // Start UART2 for RS-485
-  Serial2.begin(9600, SERIAL_8E1 , RX2_PIN, TX2_PIN); //SERIAL_8N1: 8 data bits, no parity, 1 stop bit
+  // Initialize UART2 for RS-485
+  Serial2.begin(9600, SERIAL_8N1, RX2_PIN, TX2_PIN);
 
-  // Initialize Modbus
+  // Initialize Modbus node
   node.begin(MODBUS_ID, Serial2);
   node.preTransmission(preTransmission);
   node.postTransmission(postTransmission);
-             // 3 second timeout
+  // (uses default 2000 ms timeout)
 
-  Serial.println("Setup complete. Entering loop…");
+  Serial.println("Setup complete. Entering loop...");
 }
 
 void loop() {
-  // Read 1 input register (function 4)
+  // Read 1 input register (function 4) for nitrogen
   uint8_t result = node.readInputRegisters(NITROGEN_REG, 1);
 
   if (result == node.ku8MBSuccess) {
@@ -56,18 +59,18 @@ void loop() {
     Serial.print("✅ SUCCESS! Nitrogen = ");
     Serial.println(nitrogen);
   } else {
-    Serial.print("⚠️ FAILED! Modbus Error Code: ");
+    Serial.print("⚠️ Modbus Error Code: ");
     Serial.println(result);
     if (result == node.ku8MBResponseTimedOut) {
-      Serial.println("  → Timeout (226). Check:");
-      Serial.println("     • A/B wiring (swap wires)");
-      Serial.println("     • Common GND among probe/MAX485/ESP32");
-      Serial.println("     • Termination resistor across A–B");
+      Serial.println("  → Timeout (226): check wiring/termination");
+    } else if (result == node.ku8MBInvalidCRC) {
+      Serial.println("  → CRC Error (227): check parity, A/B swap, termination");
     }
   }
 
   delay(2000);
 }
+
 
 
 /*********
