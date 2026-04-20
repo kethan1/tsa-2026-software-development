@@ -1,6 +1,6 @@
 {
   "name": "SenseSync Accessibility",
-  "description": "A sensory accessibility suite featuring AI-powered on-device sound classification, Fortnite-style directional HUD radar, custom taptic vibra mixer, and real-time Audiosight visual scene narration.",
+  "description": "An installable PWA sensory-accessibility assistant for Deaf and Hard-of-Hearing users: on-device sound classification, a 360° directional sound radar, custom haptic vibration patterns, and AI visual scene narration.",
   "requestFramePermissions": ["camera", "microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

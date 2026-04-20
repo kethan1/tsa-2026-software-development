@@ -1,160 +1,229 @@
-import { HapticPattern, LocationProfile, SenseSyncCategory } from './types';
+import {
+  AlertPriority,
+  CategoryMeta,
+  HapticPattern,
+  ResolvedEvent,
+  SenseSyncCategory,
+  SoundEvent,
+  UrgencyShape,
+  UserSettings,
+} from './types';
 
-export const categoryMetadata: Record<SenseSyncCategory, { displayName: string; icon: string; defaultColor: string }> = {
-  fireAlarm: { displayName: 'Fire / Smoke Alarm', icon: '🔥', defaultColor: 'bg-red-500 text-red-100 hover:bg-red-600' },
-  siren: { displayName: 'Emergency Siren', icon: '🚨', defaultColor: 'bg-rose-500 text-rose-100 hover:bg-rose-600' },
-  doorbell: { displayName: 'Doorbell Ring', icon: '🔔', defaultColor: 'bg-amber-500 text-amber-100 hover:bg-amber-600' },
-  babyCrying: { displayName: 'Baby Crying', icon: '👶', defaultColor: 'bg-teal-500 text-teal-100 hover:bg-teal-600' },
-  dogBarking: { displayName: 'Dog Bark / Vehicle Horn', icon: '🐕', defaultColor: 'bg-violet-500 text-violet-100 hover:bg-violet-600' },
-  knock: { displayName: 'Knock at Door', icon: '🚪', defaultColor: 'bg-purple-500 text-purple-100 hover:bg-purple-600' },
-  phoneRinging: { displayName: 'Phone Ringing', icon: '📱', defaultColor: 'bg-sky-500 text-sky-100 hover:bg-sky-600' },
-  alarm: { displayName: 'Timer / Beep Alarm', icon: '⏰', defaultColor: 'bg-orange-500 text-orange-100 hover:bg-orange-600' },
-  applause: { displayName: 'Applause / Crowd', icon: '👏', defaultColor: 'bg-emerald-500 text-emerald-100 hover:bg-emerald-600' },
-  speech: { displayName: 'Someone Speaking', icon: '💬', defaultColor: 'bg-indigo-500 text-indigo-100 hover:bg-indigo-600' },
-  custom: { displayName: 'User Custom Sound', icon: '⭐', defaultColor: 'bg-slate-500 text-slate-100 hover:bg-slate-600' },
-};
-
-export const defaultHapticPatterns: Record<SenseSyncCategory, HapticPattern> = {
-  fireAlarm: {
-    name: 'Rapid Fire Danger',
-    category: 'fireAlarm',
-    pattern: [500, 100, 500, 100, 500],
-    intensity: 1.0,
-    color: '#ef4444',
-    description: 'Extremely aggressive long pulses designed to wake up a sleeping user under direct urgency.'
+/* ===========================================================================
+   Sound categories. Each one is a distinct icon + label; urgency adds colour,
+   a shape glyph, a text tag, and a haptic rhythm on top — never colour alone.
+   =========================================================================== */
+export const categoryMetadata: Record<SenseSyncCategory, CategoryMeta> = {
+  speech: {
+    displayName: 'Speech',
+    shortName: 'Speech',
+    icon: '💬',
+    baseUrgency: 'normal',
+    description: 'Someone is talking near you.',
   },
-  siren: {
-    name: 'Continuous Emergency Waves',
-    category: 'siren',
-    pattern: [800, 200, 800, 200],
-    intensity: 1.0,
-    color: '#f43f5e',
-    description: 'Sustained emergency pulse wave mimicking sirens of nearby safety vehicles.'
+  name: {
+    displayName: 'Name Called',
+    shortName: 'Name',
+    icon: '📣',
+    baseUrgency: 'high',
+    description: 'Your name — or a call for your attention — was heard.',
   },
   doorbell: {
-    name: 'Short Triple Bounce',
-    category: 'doorbell',
-    pattern: [150, 80, 150, 80, 150],
-    intensity: 0.7,
-    color: '#f59e0b',
-    description: 'Quick cheerful triple bounce that mimics standard home chime bells.'
+    displayName: 'Doorbell / Knock',
+    shortName: 'Door',
+    icon: '🔔',
+    baseUrgency: 'high',
+    description: 'Someone is at the door.',
   },
-  babyCrying: {
-    name: 'Rapid Flutter Pulse',
-    category: 'babyCrying',
-    pattern: [100, 100, 100, 100, 100, 100, 100, 100],
-    intensity: 0.85,
-    color: '#14b8a6',
-    description: 'Urgent fluttering alert that simulates high-frequency cries of building infants.'
+  vehicle: {
+    displayName: 'Vehicle Nearby',
+    shortName: 'Vehicle',
+    icon: '🚗',
+    baseUrgency: 'high',
+    description: 'A car or bike is moving close by. Critical when it comes from behind.',
   },
-  dogBarking: {
-    name: 'Double Bark Shock',
-    category: 'dogBarking',
-    pattern: [200, 100, 200],
-    intensity: 0.6,
-    color: '#8b5cf6',
-    description: 'Double abrupt pulse mirroring localized sharp events like a canine alarm.'
-  },
-  knock: {
-    name: 'Spaced Heavy Drum',
-    category: 'knock',
-    pattern: [300, 300, 300, 300],
-    intensity: 0.75,
-    color: '#a855f7',
-    description: 'Measured, powerful single pulses mimicking physical knocks at the entry point.'
-  },
-  phoneRinging: {
-    name: 'Cyclic Wave Vibration',
-    category: 'phoneRinging',
-    pattern: [400, 200, 400, 200, 400],
-    intensity: 0.5,
-    color: '#0ea5e9',
-    description: 'Rhythmic, repeating buzz pattern resembling traditional standard mobile ringtones.'
+  siren: {
+    displayName: 'Emergency Siren',
+    shortName: 'Siren',
+    icon: '🚨',
+    baseUrgency: 'emergency',
+    description: 'Police, fire, or ambulance siren.',
   },
   alarm: {
-    name: 'Strobe Beeping Pulse',
-    category: 'alarm',
-    pattern: [150, 150, 150, 150, 150, 150],
-    intensity: 0.8,
-    color: '#f97316',
-    description: 'Uniform intervals of vibration to signal a microwave, stove, or clock alert.'
+    displayName: 'Fire / Smoke Alarm',
+    shortName: 'Alarm',
+    icon: '🔥',
+    baseUrgency: 'emergency',
+    description: 'A fire, smoke, or CO alarm is sounding.',
   },
-  applause: {
-    name: 'Gentle Noise Wave',
-    category: 'applause',
-    pattern: [60, 60, 60, 60, 60, 60, 120],
-    intensity: 0.3,
-    color: '#10b981',
-    description: 'Very soft, irregular micro-bursts resembling localized speech cheers or applause.'
-  },
-  speech: {
-    name: 'Single Tapping Nudge',
-    category: 'speech',
-    pattern: [100],
-    intensity: 0.4,
-    color: '#6366f1',
-    description: 'A single, gentle tap to subtly notify that conversational speech is detected.'
-  },
-  custom: {
-    name: 'Custom User Chime',
-    category: 'custom',
-    pattern: [200, 200, 400],
-    intensity: 0.7,
-    color: '#64748b',
-    description: 'Your custom designed pattern saved to local device profiles.'
+  glass: {
+    displayName: 'Glass Breaking',
+    shortName: 'Glass',
+    icon: '🪟',
+    baseUrgency: 'emergency',
+    description: 'The sharp sound of breaking glass.',
   },
 };
 
-export const defaultLocations: LocationProfile[] = [
-  {
-    id: 'home',
-    name: 'Home Haven',
-    description: 'Default environment. Prioritizes household alerts such as doorbells, baby cries, and entry knocks.',
-    icon: '🏠',
-    wifiSsid: 'MyHome_WiFi_5G',
-    enabledAlerts: {
-      fireAlarm: true, siren: true, doorbell: true, babyCrying: true,
-      dogBarking: true, knock: true, phoneRinging: true, alarm: true,
-      applause: false, speech: true, custom: true
-    },
-    priorityOverrides: {
-      fireAlarm: 'emergency', siren: 'emergency', doorbell: 'high', babyCrying: 'emergency',
-      dogBarking: 'normal', knock: 'high', phoneRinging: 'normal', alarm: 'high',
-      applause: 'low', speech: 'low', custom: 'normal'
-    }
+export const CATEGORY_ORDER: SenseSyncCategory[] = [
+  'siren',
+  'alarm',
+  'glass',
+  'vehicle',
+  'doorbell',
+  'name',
+  'speech',
+];
+
+/* ===========================================================================
+   Urgency encoding — colourblind-safe (Okabe-Ito derived), tuned bright for a
+   dark HUD, and ALWAYS paired with a shape + a text tag so it survives any kind
+   of colour vision. Contrast of each colour vs. the #0a0e16 canvas exceeds
+   WCAG AA for graphical objects + bold text.
+   =========================================================================== */
+export const urgencyColor: Record<AlertPriority, string> = {
+  emergency: '#ff5247', // red-orange
+  high: '#ffb000', // amber
+  normal: '#4da3ff', // blue
+  low: '#9aa8be', // slate
+};
+
+export const urgencyLabel: Record<AlertPriority, string> = {
+  emergency: 'CRITICAL',
+  high: 'ALERT',
+  normal: 'HEADS-UP',
+  low: 'INFO',
+};
+
+export const urgencyShape: Record<AlertPriority, UrgencyShape> = {
+  emergency: 'triangle',
+  high: 'diamond',
+  normal: 'square',
+  low: 'dot',
+};
+
+// Per-urgency haptic rhythms, designed alongside the visuals: the more urgent,
+// the longer and more insistent the buzz so it's distinguishable on the wrist.
+export const urgencyHaptics: Record<AlertPriority, HapticPattern> = {
+  emergency: { pattern: [500, 110, 500, 110, 500], label: 'Long insistent triple pulse' },
+  high: { pattern: [220, 90, 220], label: 'Two firm taps' },
+  normal: { pattern: [130, 80, 130], label: 'Soft double tap' },
+  low: { pattern: [90], label: 'Single gentle tap' },
+};
+
+// Optional per-category flavour patterns (fall back to the urgency rhythm).
+export const categoryHaptics: Partial<Record<SenseSyncCategory, HapticPattern>> = {
+  doorbell: { pattern: [150, 80, 150, 80, 150], label: 'Triple chime' },
+  glass: { pattern: [60, 40, 60, 40, 320], label: 'Sharp shatter burst' },
+  siren: { pattern: [420, 120, 420, 120, 420], label: 'Rolling emergency wave' },
+  vehicle: { pattern: [180, 70, 180, 70, 360], label: 'Rising approach buzz' },
+};
+
+const isBehind = (deg: number) => {
+  const a = ((deg % 360) + 360) % 360;
+  return a > 110 && a < 250; // roughly the rear hemisphere, outside the FOV
+};
+
+/**
+ * Direction-aware urgency: a vehicle approaching from BEHIND — exactly the case
+ * a Deaf/HOH user can't see — is escalated to a critical alert.
+ */
+export function urgencyFor(category: SenseSyncCategory, directionDeg: number): AlertPriority {
+  const base = categoryMetadata[category].baseUrgency;
+  if (category === 'vehicle' && isBehind(directionDeg)) return 'emergency';
+  return base;
+}
+
+/** Resolve an event into everything the UI renders: icon + name + colour + shape + text + haptics. */
+export function resolveEvent(event: SoundEvent): ResolvedEvent {
+  const meta = categoryMetadata[event.category as SenseSyncCategory];
+  const urgency: AlertPriority = event.urgency || meta?.baseUrgency || 'normal';
+  const cat = event.category as SenseSyncCategory;
+  const haptic = categoryHaptics[cat] || urgencyHaptics[urgency];
+  return {
+    icon: event.icon || meta?.icon || '🔊',
+    name: event.rawLabel || meta?.displayName || 'Sound',
+    shortName: meta?.shortName || event.rawLabel || 'Sound',
+    color: event.color || urgencyColor[urgency],
+    urgency,
+    urgencyLabel: urgencyLabel[urgency],
+    shape: urgencyShape[urgency],
+    isCritical: urgency === 'emergency',
+    pattern: haptic.pattern,
+  };
+}
+
+/* ===========================================================================
+   Settings + seed data
+   =========================================================================== */
+export const defaultSettings: UserSettings = {
+  sensitivity: 0.6,
+  alertOn: {
+    speech: true,
+    name: true,
+    doorbell: true,
+    vehicle: true,
+    siren: true,
+    alarm: true,
+    glass: true,
   },
+  haptics: true,
+  hapticIntensity: 0.8,
+  fullScreenAlerts: true,
+  largeText: false,
+};
+
+let seedId = 0;
+const mkEvent = (
+  category: SenseSyncCategory,
+  directionDeg: number,
+  loudness: number,
+  secondsAgo: number,
+  extra: Partial<SoundEvent> = {}
+): SoundEvent => ({
+  id: `seed-${seedId++}`,
+  category,
+  rawLabel: categoryMetadata[category].displayName,
+  icon: categoryMetadata[category].icon,
+  urgency: urgencyFor(category, directionDeg),
+  confidence: 0.78 + Math.random() * 0.2,
+  loudness,
+  directionDeg,
+  timestamp: new Date(Date.now() - secondsAgo * 1000),
+  source: 'demo',
+  ...extra,
+});
+
+/** A pre-populated recent-sounds feed so the Log screen reads as a real product. */
+export function sampleLog(): SoundEvent[] {
+  return [
+    mkEvent('vehicle', 168, 0.9, 14, { rawLabel: 'Car approaching from behind' }),
+    mkEvent('name', 305, 0.6, 47, { rawLabel: 'Name called', speaker: 'Across the room' }),
+    mkEvent('doorbell', 5, 0.75, 92, {}),
+    mkEvent('speech', 52, 0.45, 140, { transcript: '“…are you coming with us?”' }),
+    mkEvent('siren', 240, 0.95, 360, { rawLabel: 'Ambulance siren' }),
+    mkEvent('glass', 120, 0.8, 520, {}),
+    mkEvent('speech', 18, 0.4, 690, {}),
+  ];
+}
+
+/** Scripted demo fired after the AR "Start" countdown — ends on a critical event. */
+export interface DemoStep {
+  category: SenseSyncCategory;
+  directionDeg: number;
+  loudness: number;
+  afterMs: number;
+  rawLabel?: string;
+}
+export const demoSequence: DemoStep[] = [
+  { category: 'speech', directionDeg: 40, loudness: 0.45, afterMs: 900 },
+  { category: 'doorbell', directionDeg: 0, loudness: 0.72, afterMs: 3000 },
+  { category: 'name', directionDeg: 300, loudness: 0.58, afterMs: 5200 },
   {
-    id: 'outdoor',
-    name: 'City Outdoors',
-    description: 'Boosts sensitivity of sirens and vehicles while filtering out household doorbells or timers completely.',
-    icon: '🌳',
-    wifiSsid: 'LTE_MUNICIPAL',
-    enabledAlerts: {
-      fireAlarm: true, siren: true, doorbell: false, babyCrying: false,
-      dogBarking: true, knock: false, phoneRinging: true, alarm: false,
-      applause: false, speech: true, custom: false
-    },
-    priorityOverrides: {
-      fireAlarm: 'emergency', siren: 'emergency', doorbell: 'low', babyCrying: 'low',
-      dogBarking: 'high', knock: 'low', phoneRinging: 'high', alarm: 'low',
-      applause: 'low', speech: 'normal', custom: 'low'
-    }
-  },
-  {
-    id: 'school',
-    name: 'School / Academic',
-    description: 'Enters an eco-friendly quiet mode. Mutes secondary speech and appliances while strictly listening for emergency alarms.',
-    icon: '🏫',
-    wifiSsid: 'Campus_Guest_Secure',
-    enabledAlerts: {
-      fireAlarm: true, siren: true, doorbell: false, babyCrying: false,
-      dogBarking: false, knock: true, phoneRinging: false, alarm: true,
-      applause: true, speech: false, custom: false
-    },
-    priorityOverrides: {
-      fireAlarm: 'emergency', siren: 'emergency', doorbell: 'low', babyCrying: 'low',
-      dogBarking: 'low', knock: 'normal', phoneRinging: 'low', alarm: 'normal',
-      applause: 'low', speech: 'low', custom: 'low'
-    }
-  }
+    category: 'vehicle',
+    directionDeg: 165,
+    loudness: 0.92,
+    afterMs: 7600,
+    rawLabel: 'Car approaching from behind',
+  }, // rear → escalates to CRITICAL, triggers the full-screen alert
 ];

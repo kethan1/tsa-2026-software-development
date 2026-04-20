@@ -1,1 +1,142 @@
 @import "tailwindcss";
+
+/* ===========================================================================
+   SenseSync — dark HUD theme.
+   The product lives over a live camera feed, so the whole app is a dark,
+   semi-transparent heads-up display: near-white text on near-black, one azure
+   accent for what's live, and a colourblind-safe urgency ramp (always paired
+   with a shape + a text tag — never colour alone). Every colour below clears
+   WCAG AA contrast against the canvas for bold text / graphical objects.
+   =========================================================================== */
+@theme {
+  --color-canvas:     #0a0e16; /* app background — near-black navy */
+  --color-paper:      #141b29; /* card / HUD surface */
+  --color-paper-2:    #1c2538; /* raised surface */
+  --color-ink:        #eef3fb; /* primary text — near-white */
+  --color-mist:       #9fb0c9; /* secondary text (AA on canvas) */
+  --color-faint:      #6b7c98; /* tertiary / disabled */
+  --color-line:       #2a3447; /* hairline borders */
+  --color-line-2:     #1c2536; /* softer inner borders */
+
+  --color-navy:       #2b5bd7; /* solid primary button bg (white text passes AA) */
+  --color-navy-deep:  #1e44a8; /* hovers / gradients */
+  --color-azure:      #5b9bff; /* interactive · active · live accent */
+  --color-azure-50:   #16233f; /* active / selected tint on dark */
+
+  --color-danger:     #ff5247; /* critical / emergency */
+  --color-danger-50:  #2a1411; /* emergency tint */
+  --color-warning:    #ffb000; /* high / alert */
+  --color-info:       #4da3ff; /* normal / heads-up */
+  --color-safe:       #35c08a; /* all-clear */
+
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-sans:    "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  html {
+    background-color: var(--color-canvas);
+  }
+  body {
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background-color: var(--color-canvas);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* Visible keyboard focus everywhere — accessibility floor */
+  :focus-visible {
+    outline: 2px solid var(--color-azure);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  input[type="range"] {
+    accent-color: var(--color-azure);
+  }
+}
+
+@layer utilities {
+  /* Signature: a slow sonar sweep behind the radar instrument. */
+  .radar-sweep {
+    background: conic-gradient(
+      from 0deg,
+      transparent 300deg,
+      color-mix(in srgb, var(--color-azure) 26%, transparent) 348deg,
+      color-mix(in srgb, var(--color-azure) 4%, transparent) 359deg,
+      transparent 360deg
+    );
+    animation: radar-sweep 5.5s linear infinite;
+  }
+  @keyframes radar-sweep {
+    to { transform: rotate(360deg); }
+  }
+  .animate-fade-in {
+    animation: fade-in 0.4s ease both;
+  }
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  /* ===== AR mode (Fortnite-style directional damage indicator) ===== */
+
+  /* Red edge vignette that pulses when an important sound fires. */
+  .ar-damage-flash {
+    animation: ar-damage-flash 1.1s ease-out forwards;
+  }
+  @keyframes ar-damage-flash {
+    0%   { opacity: 0; }
+    12%  { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  /* Off-screen edge chevron nudges toward the sound to draw the eye. */
+  .ar-chev-left  { animation: ar-chev-left 0.9s ease-in-out infinite; }
+  .ar-chev-right { animation: ar-chev-right 0.9s ease-in-out infinite; }
+  @keyframes ar-chev-left {
+    0%, 100% { transform: translateX(0); }
+    50%      { transform: translateX(-7px); }
+  }
+  @keyframes ar-chev-right {
+    0%, 100% { transform: translateX(0); }
+    50%      { transform: translateX(7px); }
+  }
+
+  /* Soft breathing glow for the live damage arc on the ring. */
+  .ar-arc-pulse { animation: ar-arc-pulse 1.4s ease-in-out infinite; }
+  @keyframes ar-arc-pulse {
+    0%, 100% { opacity: 0.65; }
+    50%      { opacity: 1; }
+  }
+
+  /* Critical full-screen alert card — a slow, heavy throb. */
+  .alert-throb { animation: alert-throb 1.15s ease-in-out infinite; }
+  @keyframes alert-throb {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.035); }
+  }
+
+  /* "Live" status dot blink. */
+  .live-dot { animation: live-dot 1.4s ease-in-out infinite; }
+  @keyframes live-dot {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.3; }
+  }
+
+  /* Floating sound-type marker bob on the ring. */
+  .marker-bob { animation: marker-bob 2.6s ease-in-out infinite; }
+  @keyframes marker-bob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-3px); }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .radar-sweep { animation: none; }
+}

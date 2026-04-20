@@ -2,12 +2,15 @@ import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
+
+// Fast multimodal model (audio + vision understanding).
+const GEMINI_MODEL = 'gemini-2.5-flash';
 
 // Set up server-side parsers
 app.use(express.json({ limit: '10mb' }));
@@ -78,7 +81,7 @@ app.post('/api/analyze-frame', async (req, res) => {
     };
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
+      model: GEMINI_MODEL,
       contents: { parts: [imagePart, textPart] },
     });
 
@@ -87,6 +90,87 @@ app.post('/api/analyze-frame', async (req, res) => {
   } catch (err: any) {
     console.error('Gemini frame process failure:', err);
     res.status(500).json({ error: err.message || 'Cognitive pipeline internal crash.' });
+  }
+});
+
+// REST route: classify a short microphone clip and (if speech) caption it with
+// speaker + emotion. Gemini freely names the sound — categories are NOT hard-coded.
+app.post('/api/analyze-audio', async (req, res) => {
+  try {
+    const { audioBase64, mimeType } = req.body;
+
+    if (!audioBase64) {
+      return res.status(400).json({ error: 'Missing audioBase64 parameter.' });
+    }
+    if (!ai) {
+      return res.status(503).json({
+        error: 'Gemini services are not initialized. Add GEMINI_API_KEY in the Secrets panel.',
+      });
+    }
+
+    const prompt = `You are SenseSync, an assistive listening engine for a Deaf or Hard-of-Hearing user.
+Analyze this short audio clip and report what is happening in the user's environment.
+
+- isSpeech: true if the clip is primarily a person talking; false for any other environmental sound.
+- label: a SHORT, specific name for what you heard, in your own words. Do NOT pick from a fixed list —
+  describe the actual sound (e.g. "Smoke alarm beeping", "Glass shattering", "Microwave done beep",
+  "Ambulance siren", "Someone laughing"). For speech use a short summary like "Person speaking".
+- icon: ONE emoji that best represents the sound.
+- urgency: how important it is to interrupt a Deaf user, one of "emergency", "high", "normal", "low".
+  Use "emergency" for alarms/sirens/danger, "high" for doorbell/knock/phone/baby/name-call,
+  "normal" for ordinary speech/appliances, "low" for ambient noise/applause/music.
+- confidence: 0.0 to 1.0, how sure you are.
+- description: one short sentence the user can read about the sound and what it might mean.
+- If isSpeech is true also fill: transcript (the words spoken, verbatim), speaker (best guess such as
+  "Adult male", "Young child", "Speaker 1"), and emotion (one or two words, e.g. "calm", "urgent",
+  "cheerful", "frustrated").
+If the clip is silence or unintelligible, use label "Quiet / unclear", icon "🔇", urgency "low",
+confidence below 0.3.`;
+
+    const audioPart = {
+      inlineData: {
+        mimeType: mimeType || 'audio/wav',
+        data: audioBase64,
+      },
+    };
+
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: { parts: [audioPart, { text: prompt }] },
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            isSpeech: { type: Type.BOOLEAN },
+            label: { type: Type.STRING },
+            icon: { type: Type.STRING },
+            urgency: { type: Type.STRING, enum: ['emergency', 'high', 'normal', 'low'] },
+            confidence: { type: Type.NUMBER },
+            description: { type: Type.STRING },
+            transcript: { type: Type.STRING },
+            speaker: { type: Type.STRING },
+            emotion: { type: Type.STRING },
+          },
+          required: ['isSpeech', 'label', 'icon', 'urgency', 'confidence'],
+        },
+      },
+    });
+
+    const raw = response.text ? response.text.trim() : '';
+    let parsed: any;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      // Strip code fences if the model wrapped the JSON.
+      const cleaned = raw.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+      parsed = JSON.parse(cleaned);
+    }
+
+    res.json(parsed);
+  } catch (err: any) {
+    console.error('Gemini audio analysis failure:', err);
+    res.status(500).json({ error: err.message || 'Audio cognitive pipeline internal crash.' });
   }
 });
 
