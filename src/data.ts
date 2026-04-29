@@ -169,7 +169,6 @@ export const defaultSettings: UserSettings = {
   },
   haptics: true,
   hapticIntensity: 0.8,
-  fullScreenAlerts: true,
   largeText: false,
 };
 
@@ -225,5 +224,5 @@ export const demoSequence: DemoStep[] = [
     loudness: 0.92,
     afterMs: 7600,
     rawLabel: 'Car approaching from behind',
-  }, // rear → escalates to CRITICAL, triggers the full-screen alert
+  }, // rear -> escalates to CRITICAL, triggers the radar-page popup
 ];

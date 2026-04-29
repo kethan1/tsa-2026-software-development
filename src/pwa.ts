@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 
+import { resolveEvent } from './data';
+import type { SoundEvent } from './types';
+
 // The beforeinstallprompt event isn't in the standard lib typings.
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -65,4 +68,43 @@ export function useInstallPrompt() {
   };
 
   return { canInstall: !!deferred && !installed, installed, promptInstall };
+}
+
+export async function requestSoundNotificationPermission(): Promise<NotificationPermission> {
+  if (!('Notification' in window)) return 'denied';
+  if (Notification.permission !== 'default') return Notification.permission;
+  return Notification.requestPermission();
+}
+
+export async function notifySoundEvent(event: SoundEvent) {
+  if (!('Notification' in window)) return;
+  const permission = await requestSoundNotificationPermission();
+  if (permission !== 'granted') return;
+
+  const resolved = resolveEvent(event);
+  const title = resolved.isCritical ? `Critical sound: ${resolved.name}` : `Sound detected: ${resolved.name}`;
+  const body = `${Math.round(event.confidence * 100)}% confidence · ${event.directionDeg}° direction`;
+  const options: NotificationOptions = {
+    body,
+    tag: `sound-${event.id}`,
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    data: { url: '/', eventId: event.id },
+    requireInteraction: resolved.isCritical,
+    silent: false,
+  };
+
+  if ('serviceWorker' in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) {
+        await registration.showNotification(title, options);
+        return;
+      }
+    } catch {
+      // Fall through to the page-level notification path in dev or unsupported browsers.
+    }
+  }
+
+  new Notification(title, options);
 }

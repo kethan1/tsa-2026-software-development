@@ -1,11 +1,3 @@
-/* ===========================================================================
-   SenseSync data model — AR sound awareness for Deaf / Hard-of-Hearing users.
-
-   Accessibility rule baked into the model: no piece of information is ever
-   carried by colour alone. Every sound resolves to colour + SHAPE + ICON + TEXT
-   (see `resolveEvent` in data.ts), and every alert ships a haptic pattern.
-   =========================================================================== */
-
 export type SenseSyncCategory =
   | 'speech' // someone talking nearby
   | 'name' // your name / being called
@@ -17,12 +9,9 @@ export type SenseSyncCategory =
 
 export type AlertPriority = 'low' | 'normal' | 'high' | 'emergency';
 
-// Colour-independent shape token, so urgency reads without relying on hue.
-// Rendered as an SVG badge next to every sound (colourblind-safe redundancy).
 export type UrgencyShape = 'dot' | 'square' | 'diamond' | 'triangle';
 
 export interface SoundEvent {
-  // A SenseSyncCategory for known sounds; free-form for anything classified live.
   category: string;
   id: string;
   rawLabel: string;
@@ -76,6 +65,5 @@ export interface UserSettings {
   alertOn: Record<SenseSyncCategory, boolean>;
   haptics: boolean;
   hapticIntensity: number; // 0..1 — scales pattern duration
-  fullScreenAlerts: boolean; // full-screen takeover for critical sounds
   largeText: boolean;
 }

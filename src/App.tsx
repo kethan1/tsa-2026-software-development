@@ -1,40 +1,40 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Bell,
-  Camera,
   Compass,
   Download,
   List,
-  Play,
+  MessageSquareText,
+  Mic,
+  MicOff,
   Radio,
+  Send,
   Settings,
-  ShieldAlert,
   SlidersHorizontal,
   Square,
+  Trash2,
   Volume2,
   Watch,
 } from 'lucide-react';
 
-import { SoundEvent, SenseSyncCategory, UserSettings } from './types';
+import { SoundEvent, UserSettings } from './types';
 import {
   CATEGORY_ORDER,
   categoryHaptics,
   categoryMetadata,
   defaultSettings,
   resolveEvent,
-  sampleLog,
-  urgencyFor,
 } from './data';
-import SoundRing from './components/SoundRing';
-import { SoundBadge, UrgencyTag } from './components/SoundBadge';
+import ARView from './components/ARView';
+import { SoundBadge } from './components/SoundBadge';
 import { useInstallPrompt } from './pwa';
 
-type ScreenId = 'main' | 'alert' | 'log' | 'settings';
+type ScreenId = 'main' | 'speech' | 'log' | 'settings';
 
 const SCREENS: { id: ScreenId; label: string; title: string; icon: React.ComponentType<{ size?: number }> }[] = [
-  { id: 'main', label: 'Radar', title: 'Live sound radar', icon: Radio },
-  { id: 'alert', label: 'Alert', title: 'Critical alert', icon: ShieldAlert },
+  { id: 'main', label: 'Surround', title: 'Surround Sound', icon: Radio },
+  { id: 'speech', label: 'Speech', title: 'Speech tools', icon: MessageSquareText },
   { id: 'log', label: 'Recent', title: 'Recent sounds', icon: List },
   { id: 'settings', label: 'Settings', title: 'Settings', icon: Settings },
 ];
@@ -48,139 +48,165 @@ const timeAgo = (date: Date) => {
   return `${minutes}m ago`;
 };
 
-const demoEvent = (category: SenseSyncCategory, directionDeg: number, loudness: number, label?: string): SoundEvent => ({
-  id: `${category}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  category,
-  rawLabel: label || categoryMetadata[category].displayName,
-  icon: categoryMetadata[category].icon,
-  urgency: urgencyFor(category, directionDeg),
-  confidence: 0.86 + Math.random() * 0.1,
-  loudness,
-  directionDeg,
-  timestamp: new Date(),
-  source: 'demo',
-});
+type SpeechRecognitionResultLike = {
+  isFinal: boolean;
+  0: { transcript: string; confidence?: number };
+};
 
-function useCameraFeed() {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const [cameraOn, setCameraOn] = useState(false);
-  const [cameraError, setCameraError] = useState('');
+type SpeechRecognitionEventLike = Event & {
+  resultIndex: number;
+  results: {
+    length: number;
+    [index: number]: SpeechRecognitionResultLike;
+  };
+};
 
-  useEffect(() => {
-    let cancelled = false;
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: Event & { error?: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+};
 
-    const start = async () => {
-      try {
-        setCameraError('');
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' },
-          audio: false,
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
-        }
-        setCameraOn(true);
-      } catch {
-        setCameraError('Camera unavailable');
-        setCameraOn(false);
-      }
-    };
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
-    start();
-    return () => {
-      cancelled = true;
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-      if (videoRef.current) videoRef.current.srcObject = null;
-    };
-  }, []);
+type SpeechWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
 
-  return { videoRef, cameraOn, cameraError };
-}
+type EmotionId = 'angry' | 'urgent' | 'happy' | 'sad' | 'calm' | 'neutral';
+
+type SpeechLine = {
+  id: string;
+  text: string;
+  emotion: EmotionId;
+  confidence: number | null;
+  timestamp: Date;
+};
+
+const EMOTION_META: Record<EmotionId, { label: string; classes: string; dot: string }> = {
+  angry: {
+    label: 'Angry',
+    classes: 'border-red-500/30 bg-red-500/12 text-red-100',
+    dot: 'bg-red-400',
+  },
+  urgent: {
+    label: 'Urgent',
+    classes: 'border-amber-400/35 bg-amber-400/12 text-amber-50',
+    dot: 'bg-amber-300',
+  },
+  happy: {
+    label: 'Happy',
+    classes: 'border-emerald-400/35 bg-emerald-400/12 text-emerald-50',
+    dot: 'bg-emerald-300',
+  },
+  sad: {
+    label: 'Sad',
+    classes: 'border-sky-400/35 bg-sky-400/12 text-sky-50',
+    dot: 'bg-sky-300',
+  },
+  calm: {
+    label: 'Calm',
+    classes: 'border-teal-300/35 bg-teal-300/12 text-teal-50',
+    dot: 'bg-teal-200',
+  },
+  neutral: {
+    label: 'Neutral',
+    classes: 'border-white/12 bg-white/8 text-white',
+    dot: 'bg-white/50',
+  },
+};
+
+const detectEmotion = (value: string): EmotionId => {
+  const text = value.toLowerCase();
+  const angryWords = ['angry', 'mad', 'furious', 'stop', 'hate', 'annoyed', 'upset', 'ridiculous', 'shut up'];
+  const urgentWords = ['help', 'emergency', 'hurry', 'now', 'danger', 'careful', 'watch out', 'run', 'fire'];
+  const happyWords = ['happy', 'great', 'thanks', 'thank you', 'awesome', 'love', 'nice', 'excited', 'glad'];
+  const sadWords = ['sad', 'sorry', 'hurt', 'crying', 'lonely', 'tired', 'miss', 'worried'];
+  const calmWords = ['okay', 'fine', 'calm', 'relax', 'breathe', 'slowly', 'peaceful'];
+
+  if (angryWords.some((word) => text.includes(word)) || /!{2,}/.test(value)) return 'angry';
+  if (urgentWords.some((word) => text.includes(word))) return 'urgent';
+  if (happyWords.some((word) => text.includes(word))) return 'happy';
+  if (sadWords.some((word) => text.includes(word))) return 'sad';
+  if (calmWords.some((word) => text.includes(word))) return 'calm';
+  return 'neutral';
+};
 
 export default function App() {
-  const initialLog = useMemo(() => sampleLog(), []);
   const [screen, setScreen] = useState<ScreenId>('main');
-  const [events, setEvents] = useState<SoundEvent[]>(initialLog);
-  const [running, setRunning] = useState(false);
+  const [events, setEvents] = useState<SoundEvent[]>([]);
   const [settings, setSettings] = useState<UserSettings>(defaultSettings);
-  const [heading] = useState(0);
-  const { canInstall, promptInstall } = useInstallPrompt();
-  const { videoRef, cameraOn, cameraError } = useCameraFeed();
+  const [dismissedAlertId, setDismissedAlertId] = useState<string | null>(null);
+  const { canInstall, installed, promptInstall } = useInstallPrompt();
 
-  const latest = events[0];
-  const critical = events.find((event) => resolveEvent(event).isCritical) || latest;
-  const latestResolved = resolveEvent(latest);
-  const criticalResolved = resolveEvent(critical);
+  const critical = events.find((event) => resolveEvent(event).isCritical);
+  const showCriticalPopup = screen === 'main' && critical != null && dismissedAlertId !== critical.id;
 
-  const pushEvent = (event: SoundEvent) => {
-    setEvents((prev) => [event, ...prev].slice(0, 12));
-    if ('vibrate' in navigator) navigator.vibrate(resolveEvent(event).pattern);
+  const handleRadarEventsChange = (nextEvents: SoundEvent[]) => {
+    setDismissedAlertId(null);
+    setEvents(nextEvents);
   };
-
-  const startDemo = () => {
-    setRunning(true);
-    pushEvent(demoEvent('vehicle', 180, 0.94, 'Vehicle approaching'));
-  };
-
-  const stopDemo = () => setRunning(false);
 
   return (
-    <div className="min-h-[100dvh] bg-[#f3f5f2] text-[#071016]">
+    <div className="min-h-[100dvh] bg-black text-white">
       <div className="mx-auto flex min-h-[100dvh] max-w-md flex-col overflow-hidden bg-[#06090c] text-white shadow-2xl sm:my-5 sm:min-h-[calc(100dvh-2.5rem)] sm:rounded-[2rem] sm:border sm:border-black/15">
-        <header
-          className="z-30 flex shrink-0 items-center justify-between border-b border-white/10 bg-[#061015]/92 px-5 pb-3 backdrop-blur-xl"
-          style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
-        >
-          <div>
-            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-200/70">
-              Sonar AR
-            </p>
-            <h1 className="mt-0.5 font-display text-lg font-semibold tracking-normal text-white">
-              {SCREENS.find((item) => item.id === screen)?.title}
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            {canInstall && (
-              <button
-                onClick={promptInstall}
-                aria-label="Install app"
-                className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/10 text-white transition hover:bg-white/15"
-              >
-                <Download size={17} />
-              </button>
-            )}
-            <div className="grid h-9 w-9 place-items-center rounded-full border border-cyan-300/30 bg-cyan-300/10 text-cyan-100">
-              <Compass size={18} />
+        {screen !== 'main' && (
+          <header
+            className="z-30 flex shrink-0 items-center justify-between border-b border-white/10 bg-[#061015]/92 px-5 pb-3 backdrop-blur-xl"
+            style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
+          >
+            <div>
+              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-200/70">
+                Sonar AR
+              </p>
+              <h1 className="mt-0.5 font-display text-lg font-semibold tracking-normal text-white">
+                {SCREENS.find((item) => item.id === screen)?.title}
+              </h1>
             </div>
-          </div>
-        </header>
+            <div className="flex items-center gap-2">
+              {canInstall && (
+                <button
+                  onClick={promptInstall}
+                  aria-label="Install app"
+                  className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/10 text-white transition hover:bg-white/15"
+                >
+                  <Download size={17} />
+                </button>
+              )}
+              <div className="grid h-9 w-9 place-items-center rounded-full border border-cyan-300/30 bg-cyan-300/10 text-cyan-100">
+                <Compass size={18} />
+              </div>
+            </div>
+          </header>
+        )}
 
         <main className="relative flex-1 overflow-hidden">
           <Screen active={screen === 'main'}>
-            <MainRadarScreen
-              videoRef={videoRef}
-              cameraOn={cameraOn}
-              cameraError={cameraError}
-              events={events}
-              running={running}
-              latest={latest}
-              latestResolved={latestResolved}
-              onStart={startDemo}
-              onStop={stopDemo}
-              onQuickSound={(category) => pushEvent(demoEvent(category, category === 'siren' ? 225 : 55, 0.72))}
-            />
+            <ARView onEventsChange={handleRadarEventsChange} />
+            {showCriticalPopup && critical && (
+              <CriticalAlertPopup event={critical} onDismiss={() => setDismissedAlertId(critical.id)} />
+            )}
+            {canInstall && (
+              <button
+                onClick={promptInstall}
+                className="absolute right-3 z-30 grid h-11 w-11 place-items-center rounded-full border border-white/15 bg-black/60 text-white shadow-lg backdrop-blur transition active:scale-95"
+                style={{ top: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
+                aria-label="Install app"
+              >
+                <Download size={18} />
+              </button>
+            )}
           </Screen>
 
-          <Screen active={screen === 'alert'}>
-            <CriticalAlertScreen event={critical} onSimulate={() => pushEvent(demoEvent('siren', 225, 0.98, 'Siren'))} />
+          <Screen active={screen === 'speech'}>
+            <SpeechScreen />
           </Screen>
 
           <Screen active={screen === 'log'}>
@@ -188,7 +214,13 @@ export default function App() {
           </Screen>
 
           <Screen active={screen === 'settings'}>
-            <SettingsScreen settings={settings} onSettingsChange={setSettings} />
+            <SettingsScreen
+              settings={settings}
+              onSettingsChange={setSettings}
+              canInstall={canInstall}
+              installed={installed}
+              onInstall={promptInstall}
+            />
           </Screen>
         </main>
 
@@ -217,151 +249,307 @@ export default function App() {
   );
 }
 
-function MainRadarScreen({
-  videoRef,
-  cameraOn,
-  cameraError,
-  events,
-  running,
-  latest,
-  latestResolved,
-  onStart,
-  onStop,
-  onQuickSound,
-}: {
-  videoRef: React.RefObject<HTMLVideoElement | null>;
-  cameraOn: boolean;
-  cameraError: string;
-  events: SoundEvent[];
-  running: boolean;
-  latest: SoundEvent;
-  latestResolved: ReturnType<typeof resolveEvent>;
-  onStart: () => void;
-  onStop: () => void;
-  onQuickSound: (category: SenseSyncCategory) => void;
-}) {
+function CriticalAlertPopup({ event, onDismiss }: { event: SoundEvent; onDismiss: () => void }) {
+  const resolved = resolveEvent(event);
   return (
-    <div className="relative h-full min-h-[560px] overflow-hidden bg-[#071016]">
-      <video
-        ref={videoRef}
-        playsInline
-        muted
-        className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${cameraOn ? 'opacity-100' : 'opacity-0'}`}
-      />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,rgba(20,184,166,0.08),rgba(4,7,10,0.72)_45%,rgba(4,7,10,0.92)_100%)]" />
-      {!cameraOn && <div className="absolute inset-0 bg-[linear-gradient(145deg,#0d2530,#05070a_58%,#10110c)]" />}
-
-      <div className="relative z-10 flex h-full flex-col px-5 py-5">
-        <div className="flex items-center justify-between">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-black/35 px-3 py-1.5 backdrop-blur-md">
-            <span className={`h-2 w-2 rounded-full ${running ? 'live-dot bg-emerald-300' : 'bg-white/35'}`} />
-            <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/80">
-              {running ? 'Listening' : 'Standby'}
-            </span>
+    <div
+      className="pointer-events-none absolute inset-x-3 z-40 flex justify-center"
+      style={{ top: 'calc(env(safe-area-inset-top) + 4.25rem)' }}
+    >
+      <section className="pointer-events-auto w-full max-w-sm animate-fade-in rounded-[1.5rem] border border-red-300/35 bg-[#1d0b0d]/94 p-4 text-white shadow-[0_24px_80px_rgba(0,0,0,0.65)] backdrop-blur-xl">
+        <div className="flex items-center gap-3">
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-red-300/45 bg-red-500/18 text-red-200">
+            <AlertTriangle size={27} />
           </div>
-          <div className="rounded-full border border-white/12 bg-black/35 px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-white/70 backdrop-blur-md">
-            Camera {cameraOn ? 'live' : 'off'}
-          </div>
-        </div>
-
-        <div className="grid flex-1 place-items-center py-6">
-          <div className="relative grid place-items-center">
-            <div className="absolute h-[78vw] max-h-[330px] min-h-[270px] w-[78vw] max-w-[330px] min-w-[270px] rounded-full border border-white/10 bg-black/20 shadow-[0_0_70px_rgba(45,212,191,0.18)] backdrop-blur-[1px]" />
-            <SoundRing events={events} size={310} heading={0} max={4} />
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          {cameraError && (
-            <p className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 font-mono text-[10px] text-amber-100">
-              {cameraError}. Radar overlay remains active.
+          <div className="min-w-0">
+            <p className="font-mono text-[10px] font-black uppercase tracking-[0.26em] text-red-200">
+              Critical sound detected
             </p>
-          )}
-
-          <div className="rounded-2xl border border-white/12 bg-black/45 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <SoundBadge resolved={latestResolved} size={48} />
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <UrgencyTag resolved={latestResolved} />
-                    <span className="font-mono text-[10px] text-white/50">{Math.round(latest.confidence * 100)}%</span>
-                  </div>
-                  <h2 className="mt-1 truncate font-display text-xl font-semibold tracking-normal text-white">
-                    {latestResolved.shortName}
-                  </h2>
-                  <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/55">
-                    {directionLabel(latest.directionDeg)} - {Math.round(latest.loudness * 100)} dB scale
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={running ? onStop : onStart}
-                className={`grid h-14 w-14 shrink-0 place-items-center rounded-full text-white shadow-lg transition active:scale-95 ${
-                  running ? 'bg-red-500 shadow-red-500/30' : 'bg-cyan-400 text-[#061015] shadow-cyan-400/25'
-                }`}
-                aria-label={running ? 'Stop sound radar' : 'Start sound radar'}
-              >
-                {running ? <Square size={21} fill="currentColor" /> : <Play size={22} fill="currentColor" />}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {CATEGORY_ORDER.map((category) => (
-              <button
-                key={category}
-                onClick={() => onQuickSound(category)}
-                className="shrink-0 rounded-full border border-white/12 bg-black/40 px-3 py-2 font-mono text-[10px] font-bold uppercase text-white/80 backdrop-blur-md transition hover:bg-white/10"
-              >
-                <span className="mr-1.5">{categoryMetadata[category].icon}</span>
-                {categoryMetadata[category].shortName}
-              </button>
-            ))}
+            <h2 className="mt-1 truncate font-display text-xl font-black tracking-normal text-white">
+              {resolved.shortName}
+            </h2>
           </div>
         </div>
-      </div>
+        <div className="mt-3 rounded-2xl border border-white/12 bg-white/7 px-4 py-3">
+          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-white/50">Direction</p>
+          <p className="mt-1 font-display text-lg font-bold text-white">
+            {directionLabel(event.directionDeg)} · {event.directionDeg}°
+          </p>
+          <p className="mt-2 font-mono text-[11px] text-white/60">
+            {Math.round(event.confidence * 100)}% confidence · {Math.round(event.loudness * 100)} dB scale
+          </p>
+        </div>
+        <button
+          onClick={onDismiss}
+          className="mt-3 w-full rounded-2xl bg-red-400 px-5 py-2.5 font-display text-sm font-bold text-[#160609] transition active:scale-[0.98]"
+        >
+          Got it - dismiss
+        </button>
+      </section>
     </div>
   );
 }
 
-function CriticalAlertScreen({ event, onSimulate }: { event: SoundEvent; onSimulate: () => void }) {
-  const resolved = resolveEvent(event);
+
+function SpeechScreen() {
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const [speechSupported, setSpeechSupported] = useState(true);
+  const [listening, setListening] = useState(false);
+  const [interimText, setInterimText] = useState('');
+  const [speechError, setSpeechError] = useState('');
+  const [lines, setLines] = useState<SpeechLine[]>([]);
+  const [speakText, setSpeakText] = useState('I need a quiet route to the exit, please.');
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [voiceURI, setVoiceURI] = useState('');
+  const [speaking, setSpeaking] = useState(false);
+
+  useEffect(() => {
+    const Recognition = (window as SpeechWindow).SpeechRecognition || (window as SpeechWindow).webkitSpeechRecognition;
+    if (!Recognition) {
+      setSpeechSupported(false);
+      return;
+    }
+
+    const recognition = new Recognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    recognition.onresult = (event) => {
+      let nextInterim = '';
+      const nextLines: SpeechLine[] = [];
+
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const transcript = result[0].transcript.trim();
+        if (!transcript) continue;
+
+        if (result.isFinal) {
+          nextLines.push({
+            id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`,
+            text: transcript,
+            emotion: detectEmotion(transcript),
+            confidence: typeof result[0].confidence === 'number' ? result[0].confidence : null,
+            timestamp: new Date(),
+          });
+        } else {
+          nextInterim = [nextInterim, transcript].filter(Boolean).join(' ');
+        }
+      }
+
+      if (nextLines.length > 0) {
+        setLines((prev) => [...nextLines, ...prev].slice(0, 24));
+      }
+      setInterimText(nextInterim);
+    };
+    recognition.onerror = (event) => {
+      setSpeechError(event.error ? `Speech recognition error: ${event.error}` : 'Speech recognition stopped unexpectedly.');
+      setListening(false);
+    };
+    recognition.onend = () => setListening(false);
+    recognitionRef.current = recognition;
+
+    return () => {
+      recognition.abort();
+      recognitionRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!('speechSynthesis' in window)) return;
+    const loadVoices = () => {
+      const available = window.speechSynthesis.getVoices();
+      setVoices(available);
+      setVoiceURI((current) => current || available[0]?.voiceURI || '');
+    };
+    loadVoices();
+    window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
+    return () => {
+      window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
+      window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  const startListening = () => {
+    if (!recognitionRef.current) return;
+    try {
+      setSpeechError('');
+      setInterimText('');
+      recognitionRef.current.start();
+      setListening(true);
+    } catch {
+      setSpeechError('Speech recognition is already starting.');
+    }
+  };
+
+  const stopListening = () => {
+    recognitionRef.current?.stop();
+    setListening(false);
+  };
+
+  const speak = () => {
+    const text = speakText.trim();
+    if (!text || !('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    const selectedVoice = voices.find((voice) => voice.voiceURI === voiceURI);
+    if (selectedVoice) utterance.voice = selectedVoice;
+    utterance.rate = 0.98;
+    utterance.pitch = 1;
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    setSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopSpeaking = () => {
+    window.speechSynthesis?.cancel();
+    setSpeaking(false);
+  };
+
   return (
-    <div className="relative flex h-full min-h-[560px] flex-col overflow-hidden bg-[#210908] px-5 py-5 text-white">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_32%,rgba(255,82,71,0.34),rgba(33,9,8,0.86)_42%,#070707_100%)]" />
-      <div className="absolute inset-0 alert-throb border-[12px] border-red-500/45" />
-      <div className="relative z-10 flex flex-1 flex-col items-center justify-center text-center">
-        <div className="mb-8 grid h-28 w-28 place-items-center rounded-[28px] border-2 border-red-200 bg-red-500 text-white shadow-[0_0_70px_rgba(255,82,71,0.55)]">
-          <AlertTriangle size={64} />
+    <div className="h-full min-h-[560px] overflow-y-auto bg-[#071016] px-5 py-5 text-white">
+      <div className="mb-5 flex items-end justify-between border-b border-white/10 pb-4">
+        <div>
+          <p className="font-mono text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200/70">Caption, color, speak</p>
+          <h2 className="mt-1 font-display text-3xl font-black tracking-normal">Speech</h2>
         </div>
-        <p className="font-mono text-[12px] font-black uppercase tracking-[0.34em] text-red-100">Critical</p>
-        <h2 className="mt-3 font-display text-5xl font-black tracking-normal text-white">{resolved.shortName}</h2>
-        <p className="mt-4 font-mono text-sm uppercase tracking-[0.18em] text-red-100/80">
-          {directionLabel(event.directionDeg)} - {event.directionDeg} deg
-        </p>
-        <div className="mt-9 w-full rounded-2xl border border-white/15 bg-black/35 p-4 backdrop-blur-xl">
-          <div className="flex items-center justify-between text-left">
-            <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-white/55">Haptic sent</span>
-            <Watch size={19} className="text-red-100" />
-          </div>
-          <div className="mt-4 flex gap-2">
-            {resolved.pattern.map((pulse, index) => (
-              <span
-                key={`${pulse}-${index}`}
-                className="h-3 flex-1 rounded-full bg-red-300"
-                style={{ opacity: 0.42 + Math.min(0.5, pulse / 700) }}
-              />
-            ))}
-          </div>
-        </div>
+        <MessageSquareText size={25} className="text-cyan-100" />
       </div>
-      <button
-        onClick={onSimulate}
-        className="relative z-10 mb-2 rounded-full bg-white px-5 py-3 font-mono text-[11px] font-black uppercase tracking-[0.2em] text-[#210908] transition active:scale-95"
-      >
-        Simulate critical
-      </button>
+
+      <section className="rounded-2xl border border-white/10 bg-white/7 p-4 shadow-[0_20px_70px_rgba(0,0,0,0.25)]">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="font-display text-lg font-bold tracking-normal">Speech to text</h3>
+            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">
+              {listening ? 'Listening live' : speechSupported ? 'Ready' : 'Unavailable'}
+            </p>
+          </div>
+          <button
+            onClick={listening ? stopListening : startListening}
+            disabled={!speechSupported}
+            className={`grid h-12 w-12 shrink-0 place-items-center rounded-full transition active:scale-95 ${
+              listening
+                ? 'bg-red-500 text-white shadow-[0_0_30px_rgba(239,68,68,0.42)]'
+                : speechSupported
+                  ? 'bg-cyan-300 text-[#061015] shadow-[0_0_30px_rgba(103,232,249,0.28)]'
+                  : 'bg-white/10 text-white/30'
+            }`}
+            aria-label={listening ? 'Stop speech recognition' : 'Start speech recognition'}
+          >
+            {listening ? <MicOff size={22} /> : <Mic size={22} />}
+          </button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {(Object.keys(EMOTION_META) as EmotionId[]).map((emotion) => (
+            <span key={emotion} className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/24 px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-white/70">
+              <span className={`h-2 w-2 rounded-full ${EMOTION_META[emotion].dot}`} />
+              {EMOTION_META[emotion].label}
+            </span>
+          ))}
+        </div>
+
+        {speechError && (
+          <p className="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs leading-relaxed text-amber-100">
+            {speechError}
+          </p>
+        )}
+
+        {interimText && (
+          <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-white/60">
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">Live</p>
+            <p className="mt-1 text-sm leading-relaxed">{interimText}</p>
+          </div>
+        )}
+
+        <div className="mt-4 space-y-2.5">
+          {lines.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/14 bg-black/18 px-4 py-6 text-center text-sm text-white/45">
+              No captions yet
+            </div>
+          ) : (
+            lines.map((line) => {
+              const meta = EMOTION_META[line.emotion];
+              return (
+                <article key={line.id} className={`rounded-2xl border px-4 py-3 ${meta.classes}`}>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-black uppercase tracking-[0.14em]">
+                      <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
+                      {meta.label}
+                    </span>
+                    <span className="shrink-0 font-mono text-[10px] text-white/45">
+                      {line.confidence == null ? timeAgo(line.timestamp) : `${Math.round(line.confidence * 100)}%`}
+                    </span>
+                  </div>
+                  <p className="text-base leading-relaxed text-white">{line.text}</p>
+                </article>
+              );
+            })
+          )}
+        </div>
+
+        {lines.length > 0 && (
+          <button
+            onClick={() => setLines([])}
+            className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/8 px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-white/70 transition hover:bg-white/12"
+          >
+            <Trash2 size={14} />
+            Clear captions
+          </button>
+        )}
+      </section>
+
+      <section className="mt-4 rounded-2xl border border-white/10 bg-white/7 p-4 shadow-[0_20px_70px_rgba(0,0,0,0.25)]">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="font-display text-lg font-bold tracking-normal">Text to speech</h3>
+            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">
+              {speaking ? 'Speaking' : 'Voice output'}
+            </p>
+          </div>
+          <Volume2 size={22} className="text-cyan-100" />
+        </div>
+
+        <textarea
+          value={speakText}
+          onChange={(event) => setSpeakText(event.target.value)}
+          rows={4}
+          className="w-full resize-none rounded-2xl border border-white/10 bg-black/28 px-4 py-3 text-sm leading-relaxed text-white outline-none transition placeholder:text-white/30 focus:border-cyan-200/50"
+          placeholder="Type what you want spoken aloud"
+        />
+
+        <div className="mt-3 flex gap-2">
+          <select
+            value={voiceURI}
+            onChange={(event) => setVoiceURI(event.target.value)}
+            className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white outline-none focus:border-cyan-200/50"
+          >
+            {voices.length === 0 ? (
+              <option value="">Default voice</option>
+            ) : (
+              voices.map((voice) => (
+                <option key={voice.voiceURI} value={voice.voiceURI}>
+                  {voice.name}
+                </option>
+              ))
+            )}
+          </select>
+          <button
+            onClick={speaking ? stopSpeaking : speak}
+            disabled={!speakText.trim() || !('speechSynthesis' in window)}
+            className={`grid h-11 w-11 shrink-0 place-items-center rounded-full transition active:scale-95 ${
+              speaking
+                ? 'bg-red-500 text-white'
+                : speakText.trim()
+                  ? 'bg-cyan-300 text-[#061015]'
+                  : 'bg-white/10 text-white/30'
+            }`}
+            aria-label={speaking ? 'Stop speaking' : 'Speak text'}
+          >
+            {speaking ? <Square size={17} fill="currentColor" /> : <Send size={18} />}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -376,27 +564,36 @@ function RecentSoundsScreen({ events }: { events: SoundEvent[] }) {
         </div>
         <Bell size={24} />
       </div>
-      <div className="space-y-2.5">
-        {events.map((event) => {
-          const resolved = resolveEvent(event);
-          return (
-            <article key={event.id} className="rounded-2xl border border-[#091014]/10 bg-white p-3 shadow-sm">
-              <div className="flex items-center gap-3">
-                <SoundBadge resolved={resolved} size={44} glow={false} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="truncate font-display text-base font-bold tracking-normal">{resolved.name}</h3>
-                    <span className="shrink-0 font-mono text-[10px] font-bold uppercase text-[#66736d]">{timeAgo(event.timestamp)}</span>
+      {events.length === 0 ? (
+        <div className="rounded-2xl border border-[#091014]/10 bg-white p-5 text-center shadow-sm">
+          <p className="font-display text-lg font-bold tracking-normal">No current events</p>
+          <p className="mt-2 text-sm leading-relaxed text-[#66736d]">
+            Press Start on Surround Sound to create the hardcoded demo event.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {events.map((event) => {
+            const resolved = resolveEvent(event);
+            return (
+              <article key={event.id} className="rounded-2xl border border-[#091014]/10 bg-white p-3 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <SoundBadge resolved={resolved} size={44} glow={false} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="truncate font-display text-base font-bold tracking-normal">{resolved.name}</h3>
+                      <span className="shrink-0 font-mono text-[10px] font-bold uppercase text-[#66736d]">{timeAgo(event.timestamp)}</span>
+                    </div>
+                    <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.12em] text-[#66736d]">
+                      {directionLabel(event.directionDeg)} - {Math.round(event.confidence * 100)}% confidence
+                    </p>
                   </div>
-                  <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.12em] text-[#66736d]">
-                    {directionLabel(event.directionDeg)} - {Math.round(event.confidence * 100)}% confidence
-                  </p>
                 </div>
-              </div>
-            </article>
-          );
-        })}
-      </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -404,9 +601,15 @@ function RecentSoundsScreen({ events }: { events: SoundEvent[] }) {
 function SettingsScreen({
   settings,
   onSettingsChange,
+  canInstall,
+  installed,
+  onInstall,
 }: {
   settings: UserSettings;
   onSettingsChange: React.Dispatch<React.SetStateAction<UserSettings>>;
+  canInstall: boolean;
+  installed: boolean;
+  onInstall: () => void;
 }) {
   return (
     <div className="h-full min-h-[560px] overflow-y-auto bg-[#f5f6f1] px-5 py-5 text-[#091014]">
@@ -415,7 +618,30 @@ function SettingsScreen({
         <h2 className="mt-1 font-display text-3xl font-black tracking-normal">Settings</h2>
       </div>
 
-      <section className="rounded-2xl border border-[#091014]/10 bg-white p-4 shadow-sm">
+      <section className="mt-4 rounded-2xl border border-[#091014]/10 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Download size={19} />
+            <div>
+              <h3 className="font-display text-lg font-bold tracking-normal">Install app</h3>
+              <p className="text-xs leading-relaxed text-[#64706b]">
+                {installed ? 'Surround Sound is installed on this device.' : 'Add Surround Sound to your home screen.'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onInstall}
+            disabled={!canInstall}
+            className={`shrink-0 rounded-full px-4 py-2 font-mono text-[10px] font-black uppercase tracking-[0.12em] transition ${
+              canInstall ? 'bg-[#091014] text-white active:scale-95' : 'bg-[#e4e8e4] text-[#64706b]'
+            }`}
+          >
+            {installed ? 'Installed' : canInstall ? 'Install' : 'Unavailable'}
+          </button>
+        </div>
+      </section>
+
+      <section className="mt-4 rounded-2xl border border-[#091014]/10 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <SlidersHorizontal size={19} />

@@ -110,13 +110,6 @@
     50%      { opacity: 1; }
   }
 
-  /* Critical full-screen alert card — a slow, heavy throb. */
-  .alert-throb { animation: alert-throb 1.15s ease-in-out infinite; }
-  @keyframes alert-throb {
-    0%, 100% { transform: scale(1); }
-    50%      { transform: scale(1.035); }
-  }
-
   /* "Live" status dot blink. */
   .live-dot { animation: live-dot 1.4s ease-in-out infinite; }
   @keyframes live-dot {

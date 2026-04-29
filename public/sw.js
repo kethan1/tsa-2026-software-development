@@ -1,5 +1,5 @@
 /* SenseSync service worker — gives the installed PWA an offline-capable app shell. */
-const CACHE = 'sensesync-v1';
+const CACHE = 'sensesync-v2';
 
 // App-shell assets we know up front. Hashed JS/CSS bundles are cached at runtime.
 const PRECACHE = [
@@ -9,6 +9,7 @@ const PRECACHE = [
   '/icon.svg',
   '/icon-192.png',
   '/icon-512.png',
+  '/icon-maskable-512.png',
   '/apple-touch-icon.png',
 ];
 
@@ -67,5 +68,24 @@ self.addEventListener('fetch', (event) => {
         .catch(() => cached);
       return cached || network;
     })
+  );
+});
+
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data?.url || '/';
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clients) => {
+        for (const client of clients) {
+          if ('focus' in client) {
+            client.navigate(targetUrl).catch(() => {});
+            return client.focus();
+          }
+        }
+        return self.clients.openWindow(targetUrl);
+      })
   );
 });

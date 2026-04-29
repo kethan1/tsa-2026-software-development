@@ -9,13 +9,10 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-// Fast multimodal model (audio + vision understanding).
 const GEMINI_MODEL = 'gemini-2.5-flash';
 
-// Set up server-side parsers
 app.use(express.json({ limit: '10mb' }));
 
-// Initialize GoogleGenAI SDK safely
 let ai: GoogleGenAI | null = null;
 const apiKey = process.env.GEMINI_API_KEY;
 
@@ -32,7 +29,6 @@ if (apiKey) {
   console.warn('CRITICAL WARNING: GEMINI_API_KEY environment variable is not defined.');
 }
 
-// REST api route to process frame captures
 app.post('/api/analyze-frame', async (req, res) => {
   try {
     const { imageBuffer, mode } = req.body;
@@ -47,7 +43,6 @@ app.post('/api/analyze-frame', async (req, res) => {
       });
     }
 
-    // Determine target prompt based on requested accessibility task
     let promptText = '';
     switch (mode) {
       case 'ocr':
@@ -93,8 +88,6 @@ app.post('/api/analyze-frame', async (req, res) => {
   }
 });
 
-// REST route: classify a short microphone clip and (if speech) caption it with
-// speaker + emotion. Gemini freely names the sound — categories are NOT hard-coded.
 app.post('/api/analyze-audio', async (req, res) => {
   try {
     const { audioBase64, mimeType } = req.body;
@@ -162,7 +155,6 @@ confidence below 0.3.`;
     try {
       parsed = JSON.parse(raw);
     } catch {
-      // Strip code fences if the model wrapped the JSON.
       const cleaned = raw.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
       parsed = JSON.parse(cleaned);
     }
@@ -174,7 +166,6 @@ confidence below 0.3.`;
   }
 });
 
-// Start dev or production asset servers
 async function startAppServer() {
   if (process.env.NODE_ENV !== 'production') {
     console.log('Initiating Vite Dev Server Connection Express proxy...');

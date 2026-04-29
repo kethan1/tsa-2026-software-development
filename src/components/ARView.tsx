@@ -1,16 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Play,
-  Square,
-  Camera,
   Compass,
   ChevronLeft,
   ChevronRight,
   AlertTriangle,
   Crosshair,
+  List,
 } from 'lucide-react';
-import { SenseSyncCategory, SoundEvent } from '../types';
+import { SoundEvent } from '../types';
 import { resolveEvent } from '../data';
+import { notifySoundEvent, requestSoundNotificationPermission } from '../pwa';
 
 /* ===========================================================================
    AR mode — augmented-reality sound awareness.
@@ -20,20 +19,69 @@ import { resolveEvent } from '../data';
    active sound. If the sound is outside the camera's field of view, a pulsing
    arrow pins to the screen edge that's closest to it.
 
-   This is a hard-coded demo: the camera runs the whole time the view is open;
-   pressing Start counts down 5s, then releases ONE predetermined event from ONE
-   predetermined angle. A little jitter is added to the bearing so the
-   localisation reads like a live sensor instead of a frozen value.
+   This is a hard-coded demo: the camera and scanning animation run whenever
+   the page is open. The corner N button advances through a short scripted list,
+   waiting briefly before replacing the visible event list with the next sound.
    =========================================================================== */
 
-// ---- Hard-coded demo scenario: fired 5s after Start ----
-const HARDCODED_SCENARIO: { category: SenseSyncCategory; label: string; angle: number } = {
-  category: 'alarm', // an emergency sound so the alert is dramatic
-  label: 'Fire Alarm',
-  angle: 135, // degrees (0 = ahead, 90 = right, 180 = behind, 270 = left)
-};
-const COUNTDOWN_SECONDS = 5;
+const NEXT_EVENT_DELAY_MS = 3500;
 
+const HARD_CODED_EVENTS: SoundEvent[] = [
+  {
+    id: 'demo-speech-front-left',
+    category: 'speech',
+    rawLabel: 'Conversation nearby',
+    icon: '💬',
+    urgency: 'normal',
+    confidence: 0.88,
+    loudness: 0.42,
+    directionDeg: 315,
+    timestamp: new Date(0),
+    source: 'demo',
+  },
+  {
+    id: 'demo-appliance-front',
+    category: 'appliance',
+    rawLabel: 'Appliance beep',
+    icon: '🔊',
+    urgency: 'normal',
+    confidence: 0.9,
+    loudness: 0.58,
+    directionDeg: 18,
+    timestamp: new Date(0),
+    source: 'demo',
+  },
+  {
+    id: 'demo-footsteps-right',
+    category: 'footsteps',
+    rawLabel: 'Footsteps passing by',
+    icon: '👟',
+    urgency: 'normal',
+    confidence: 0.84,
+    loudness: 0.52,
+    directionDeg: 82,
+    timestamp: new Date(0),
+    source: 'demo',
+  },
+  {
+    id: 'demo-glass-breaking-behind-right',
+    category: 'glass',
+    rawLabel: 'Glass breaking',
+    icon: '🪟',
+    urgency: 'emergency',
+    confidence: 0.94,
+    loudness: 0.96,
+    directionDeg: 142,
+    timestamp: new Date(0),
+    source: 'demo',
+  },
+];
+
+const instantiateEvent = (event: SoundEvent, sequence: number): SoundEvent => ({
+  ...event,
+  id: `${event.id}-${sequence}-${Date.now()}`,
+  timestamp: new Date(),
+});
 // Rear-camera horizontal field of view (approx). Inside this cone a sound is
 // "on screen"; outside it we show the off-screen edge arrow.
 const FOV_DEG = 64;
@@ -62,16 +110,13 @@ const ringPoint = (cx: number, cy: number, r: number, deg: number): [number, num
 };
 
 interface ARViewProps {
-  /** Latest sound event in the app (drives the indicator). */
-  activeEvent: SoundEvent | null;
-  /** Fire the hard-coded scenario into the shared app state. */
-  onFire: (category: SenseSyncCategory, label: string, angle: number) => void;
+  onEventsChange?: (events: SoundEvent[]) => void;
 }
 
-export default function ARView({ activeEvent, onFire }: ARViewProps) {
-  const [running, setRunning] = useState(false);
-  const [countdown, setCountdown] = useState<number | null>(null);
-  const [fired, setFired] = useState(false); // an event has been released this run
+export default function ARView({ onEventsChange }: ARViewProps) {
+  const [events, setEvents] = useState<SoundEvent[]>([]);
+  const [nextIndex, setNextIndex] = useState(0);
+  const [pendingNext, setPendingNext] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [flash, setFlash] = useState(false); // red damage flash on a new event
@@ -90,7 +135,7 @@ export default function ARView({ activeEvent, onFire }: ARViewProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const countdownTimer = useRef<number | null>(null);
+  const nextTimer = useRef<number | null>(null);
   const orientHandler = useRef<((e: DeviceOrientationEvent) => void) | null>(null);
   const lastEventId = useRef<string | null>(null);
 
@@ -186,55 +231,48 @@ export default function ARView({ activeEvent, onFire }: ARViewProps) {
     setHeading(0);
   };
 
-  // ---- Start / Stop (event detection only — the camera runs independently) ----
-  const handleStart = () => {
-    setRunning(true);
-    setFired(false);
+  const toggleNextEvent = () => {
+    if (pendingNext) return;
 
-    // Hard-coded: count down 5 seconds, then release the predetermined event.
-    setCountdown(COUNTDOWN_SECONDS);
-    let remaining = COUNTDOWN_SECONDS;
-    countdownTimer.current = window.setInterval(() => {
-      remaining -= 1;
-      if (remaining <= 0) {
-        if (countdownTimer.current) clearInterval(countdownTimer.current);
-        countdownTimer.current = null;
-        setCountdown(null);
-        setFired(true);
-        onFire(HARDCODED_SCENARIO.category, HARDCODED_SCENARIO.label, HARDCODED_SCENARIO.angle);
-      } else {
-        setCountdown(remaining);
-      }
-    }, 1000);
-  };
-
-  const handleStop = () => {
-    if (countdownTimer.current) {
-      clearInterval(countdownTimer.current);
-      countdownTimer.current = null;
+    if (events.length > 0) {
+      setEvents([]);
+      onEventsChange?.([]);
+      return;
     }
-    setRunning(false);
-    setCountdown(null);
-    setFired(false);
-    setFlash(false);
+
+    void requestSoundNotificationPermission();
+    setPendingNext(true);
+    if (nextTimer.current) window.clearTimeout(nextTimer.current);
+    nextTimer.current = window.setTimeout(() => {
+      const nextEvent = instantiateEvent(HARD_CODED_EVENTS[nextIndex], nextIndex);
+      const nextEvents = [nextEvent];
+      setEvents(nextEvents);
+      onEventsChange?.(nextEvents);
+      void notifySoundEvent(nextEvent);
+      setNextIndex((index) => (index + 1) % HARD_CODED_EVENTS.length);
+      setPendingNext(false);
+      nextTimer.current = null;
+    }, NEXT_EVENT_DELAY_MS);
   };
 
-  // Camera + compass run for the whole life of the view, independent of the
-  // Start/Stop button. Start them on mount, tear them down on unmount.
+  // Camera + compass run for the whole life of the view.
   useEffect(() => {
     startCamera();
     enableCompass();
     return () => {
-      if (countdownTimer.current) clearInterval(countdownTimer.current);
+      if (nextTimer.current) window.clearTimeout(nextTimer.current);
+      onEventsChange?.([]);
       stopCamera();
       disableCompass();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---- Alert the phone whenever a new event becomes active while running ----
+  const activeEvent = events[0] || null;
+
+  // ---- Alert the phone whenever a new event becomes active. ----
   useEffect(() => {
-    if (!running || !fired || !activeEvent) return;
+    if (!activeEvent) return;
     if (lastEventId.current === activeEvent.id) return;
     lastEventId.current = activeEvent.id;
 
@@ -243,11 +281,11 @@ export default function ARView({ activeEvent, onFire }: ARViewProps) {
     if ('vibrate' in navigator) navigator.vibrate([60, 40, 120, 40, 200]);
     const t = window.setTimeout(() => setFlash(false), 1100);
     return () => clearTimeout(t);
-  }, [activeEvent, running, fired]);
+  }, [activeEvent]);
 
   // ---- Live localisation jitter: nudge the bearing with smooth, organic noise ----
   useEffect(() => {
-    const live = running && fired && !!activeEvent;
+    const live = !!activeEvent;
     if (!live || reduceMotion) {
       setNoiseDeg(0);
       return;
@@ -266,13 +304,13 @@ export default function ARView({ activeEvent, onFire }: ARViewProps) {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [running, fired, activeEvent, reduceMotion]);
+  }, [activeEvent, reduceMotion]);
 
   // ---------- Geometry of the active indicator ----------
-  const showIndicator = running && fired && !!activeEvent;
+  const showIndicator = !!activeEvent;
   const resolved = activeEvent ? resolveEvent(activeEvent) : null;
   const isEmergency = resolved?.isCritical ?? false;
-  const arcColor = isEmergency ? '#ef4444' : '#38bdf8';
+  const arcColor = !resolved ? '#38bdf8' : isEmergency ? '#ef4444' : '#38bdf8';
 
   const { w, h } = dims;
   const cx = w / 2;
@@ -307,7 +345,7 @@ export default function ARView({ activeEvent, onFire }: ARViewProps) {
   const reticleX = cx + (displayRelative / HALF_FOV) * (w / 2 - 44);
 
   return (
-    <div className="relative h-[calc(100dvh-9rem)] min-h-[440px] w-full overflow-hidden bg-black">
+    <div className="relative h-full min-h-[calc(100dvh-4.5rem)] w-full overflow-hidden bg-black">
       {/* ===== Camera feed (or dark backdrop) ===== */}
       <div ref={containerRef} className="absolute inset-0">
         <video
@@ -323,8 +361,7 @@ export default function ARView({ activeEvent, onFire }: ARViewProps) {
         )}
 
         {/* ===== SVG localisation indicator overlay ===== */}
-        {showIndicator && (
-          <svg
+        <svg
             className="pointer-events-none absolute inset-0"
             width="100%"
             height="100%"
@@ -362,18 +399,14 @@ export default function ARView({ activeEvent, onFire }: ARViewProps) {
               </g>
             )}
 
-            {/* concentric range rings */}
-            {[1, 0.68, 0.36].map((f, i) => (
-              <circle
-                key={i}
-                cx={cx}
-                cy={cy}
-                r={R * f}
-                fill="none"
-                stroke="rgba(255,255,255,0.14)"
-                strokeWidth={i === 0 ? 1.5 : 1}
-              />
-            ))}
+            <circle
+              cx={cx}
+              cy={cy}
+              r={R}
+              fill="none"
+              stroke="rgba(255,255,255,0.14)"
+              strokeWidth={1.5}
+            />
 
             {/* tick marks at front / right / back / left */}
             {[0, 90, 180, 270].map((d) => {
@@ -392,63 +425,67 @@ export default function ARView({ activeEvent, onFire }: ARViewProps) {
               );
             })}
 
-            {/* uncertainty cone toward the sound, with dashed bearing limits */}
-            <path d={conePath} fill="url(#ar-cone-grad)" />
-            <line
-              x1={cx}
-              y1={cy}
-              x2={cone1x}
-              y2={cone1y}
-              stroke={arcColor}
-              strokeWidth={1}
-              strokeDasharray="3 5"
-              opacity={0.45}
-            />
-            <line
-              x1={cx}
-              y1={cy}
-              x2={cone2x}
-              y2={cone2y}
-              stroke={arcColor}
-              strokeWidth={1}
-              strokeDasharray="3 5"
-              opacity={0.45}
-            />
+            {showIndicator && (
+              <>
+                {/* uncertainty cone toward the sound, with dashed bearing limits */}
+                <path d={conePath} fill="url(#ar-cone-grad)" />
+                <line
+                  x1={cx}
+                  y1={cy}
+                  x2={cone1x}
+                  y2={cone1y}
+                  stroke={arcColor}
+                  strokeWidth={1}
+                  strokeDasharray="3 5"
+                  opacity={0.45}
+                />
+                <line
+                  x1={cx}
+                  y1={cy}
+                  x2={cone2x}
+                  y2={cone2y}
+                  stroke={arcColor}
+                  strokeWidth={1}
+                  strokeDasharray="3 5"
+                  opacity={0.45}
+                />
 
-            {/* soft glow underlay for the live arc */}
-            <path
-              d={arcPath}
-              fill="none"
-              stroke={arcColor}
-              strokeWidth={18}
-              strokeLinecap="round"
-              opacity={0.35}
-              filter="url(#ar-glow)"
-            />
-
-            {/* the live damage arc, pointing at the sound */}
-            <g className="ar-arc-pulse">
-              <path
-                d={arcPath}
-                fill="none"
-                stroke={arcColor}
-                strokeWidth={9}
-                strokeLinecap="round"
-                style={{ filter: `drop-shadow(0 0 8px ${arcColor})` }}
-              />
-              {/* chevron at the arc midpoint, rotated to point outward */}
-              <g transform={`translate(${mx} ${my}) rotate(${displayRelative})`}>
+                {/* soft glow underlay for the live arc */}
                 <path
-                  d="M -9 6 L 0 -8 L 9 6"
+                  d={arcPath}
                   fill="none"
                   stroke={arcColor}
-                  strokeWidth={3.5}
+                  strokeWidth={18}
                   strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ filter: `drop-shadow(0 0 6px ${arcColor})` }}
+                  opacity={0.35}
+                  filter="url(#ar-glow)"
                 />
-              </g>
-            </g>
+
+                {/* the live damage arc, pointing at the sound */}
+                <g className="ar-arc-pulse">
+                  <path
+                    d={arcPath}
+                    fill="none"
+                    stroke={arcColor}
+                    strokeWidth={9}
+                    strokeLinecap="round"
+                    style={{ filter: `drop-shadow(0 0 8px ${arcColor})` }}
+                  />
+                  {/* chevron at the arc midpoint, rotated to point outward */}
+                  <g transform={`translate(${mx} ${my}) rotate(${displayRelative})`}>
+                    <path
+                      d="M -9 6 L 0 -8 L 9 6"
+                      fill="none"
+                      stroke={arcColor}
+                      strokeWidth={3.5}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      style={{ filter: `drop-shadow(0 0 6px ${arcColor})` }}
+                    />
+                  </g>
+                </g>
+              </>
+            )}
 
             {/* center "you" marker with an expanding sonar ping */}
             {!reduceMotion && (
@@ -464,7 +501,6 @@ export default function ARView({ activeEvent, onFire }: ARViewProps) {
             )}
             <circle cx={cx} cy={cy} r={5} fill="white" opacity={0.9} />
           </svg>
-        )}
 
         {/* ===== On-screen reticle (sound is within the camera cone) ===== */}
         {showIndicator && !offScreen && resolved && (
@@ -537,11 +573,11 @@ export default function ARView({ activeEvent, onFire }: ARViewProps) {
         )}
 
         {/* ===== Top status banner ===== */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3">
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 px-3 py-3 pl-16 pr-16">
           <div className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 backdrop-blur">
-            <span className={`h-2 w-2 rounded-full ${running ? 'animate-pulse bg-emerald-400' : 'bg-white/40'}`} />
+            <span className={`h-2 w-2 rounded-full animate-pulse bg-emerald-400`} />
             <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-white">
-              AR {running ? 'Live' : 'Standby'}
+              Surround Live
             </span>
           </div>
           <div className="flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 font-mono text-[11px] text-white backdrop-blur">
@@ -576,70 +612,66 @@ export default function ARView({ activeEvent, onFire }: ARViewProps) {
           </div>
         )}
 
-        {/* ===== Countdown overlay ===== */}
-        {countdown !== null && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/45 backdrop-blur-[2px]">
-            <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-white/70">
-              Incoming sound in
-            </p>
-            <p className="font-display text-7xl font-bold text-white drop-shadow-lg">{countdown}</p>
-            <p className="mt-1 font-mono text-[11px] text-white/60">
-              Hold up your phone and look around
-            </p>
-          </div>
-        )}
-
-        {/* ===== Idle hint ===== */}
-        {!running && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center">
-            <Camera size={48} className="text-white/40" />
-            <h3 className="font-display text-lg font-bold text-white">AR Sound Radar</h3>
-            <p className="max-w-xs text-xs leading-relaxed text-white/60">
-              The camera is already live. Press{' '}
-              <span className="font-bold text-white">Start</span> to begin detection — after 5
-              seconds a sound is released, a glowing arc on the ring points toward it, and an arrow
-              pins to the edge if it's behind you.
-            </p>
-          </div>
-        )}
-
-        {cameraError && running && (
+        {cameraError && (
           <div className="absolute inset-x-0 top-14 mx-auto w-fit rounded-lg bg-black/70 px-3 py-1.5 text-center font-mono text-[10px] text-amber-200 backdrop-blur">
             {cameraError}
           </div>
         )}
       </div>
 
-      {/* ===== Start / Stop control (one button that morphs between states) ===== */}
-      <div className="absolute inset-x-0 bottom-0 flex justify-center p-4">
-        <button
-          onClick={running ? handleStop : handleStart}
-          aria-label={running ? 'Stop detection' : 'Start detection'}
-          className={`flex items-center gap-2.5 rounded-full px-8 py-3.5 text-base font-bold text-white transition-all duration-500 ease-out active:scale-95 ${
-            running
-              ? 'bg-danger shadow-[0_8px_30px_-6px_rgba(214,47,34,0.7)]'
-              : 'bg-emerald-500 shadow-[0_8px_30px_-6px_rgba(16,185,129,0.7)]'
-          }`}
-        >
-          {/* icons cross-fade in place so the button never jumps */}
-          <span className="relative flex h-5 w-5 items-center justify-center">
-            <Play
-              size={20}
-              fill="currentColor"
-              className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transition-all duration-300 ${
-                running ? 'scale-50 opacity-0' : 'scale-100 opacity-100'
-              }`}
-            />
-            <Square
-              size={18}
-              fill="currentColor"
-              className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transition-all duration-300 ${
-                running ? 'scale-100 opacity-100' : 'scale-50 opacity-0'
-              }`}
-            />
-          </span>
-          <span className="w-12 text-left">{running ? 'Stop' : 'Start'}</span>
-        </button>
+      <button
+        onClick={toggleNextEvent}
+        disabled={pendingNext}
+        className={`absolute left-3 z-30 grid h-11 w-12 place-items-center rounded-full border font-mono text-sm font-black shadow-lg backdrop-blur transition active:scale-95 ${
+          pendingNext
+            ? 'border-cyan-200/20 bg-cyan-200/15 text-cyan-100/55'
+            : 'border-cyan-200/35 bg-black/65 text-cyan-100 hover:bg-cyan-200/15'
+        }`}
+        style={{ top: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
+        aria-label="Show next scripted sound"
+      >
+        (N)
+      </button>
+
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-4">
+        <section className="rounded-2xl border border-white/10 bg-black/58 p-3 text-white shadow-[0_16px_60px_rgba(0,0,0,0.42)] backdrop-blur-md">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <List size={15} className="text-cyan-100" />
+              <p className="font-mono text-[10px] font-black uppercase tracking-[0.2em] text-white/65">Detected events</p>
+            </div>
+            <p className="font-mono text-[10px] text-white/45">{events.length}</p>
+          </div>
+          {events.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-white/12 px-3 py-3 text-center text-xs text-white/45">
+              Scanning for sound
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {events.map((event) => {
+                const eventResolved = resolveEvent(event);
+                return (
+                  <article key={event.id} className="flex items-center gap-3 rounded-xl bg-white/8 px-3 py-2">
+                    <span className="text-2xl">{eventResolved.icon}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-white">{eventResolved.name}</p>
+                      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-white/48">
+                        {event.directionDeg}° · {cardinal(event.directionDeg)} · {Math.round(event.confidence * 100)}%
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full px-2 py-1 font-mono text-[9px] font-black uppercase tracking-[0.1em] ${
+                        eventResolved.isCritical ? 'bg-red-400 text-[#210908]' : 'bg-cyan-200 text-[#061015]'
+                      }`}
+                    >
+                      {eventResolved.urgencyLabel}
+                    </span>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );
