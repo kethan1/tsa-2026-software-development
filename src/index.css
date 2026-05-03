@@ -123,6 +123,16 @@
     0%, 100% { transform: translateY(0); }
     50%      { transform: translateY(-3px); }
   }
+
+  /* Live mic equaliser bars shown while recording speech. */
+  .audio-bar {
+    height: 6px;
+    animation: audio-bar 0.7s ease-in-out infinite;
+  }
+  @keyframes audio-bar {
+    0%, 100% { height: 5px; opacity: 0.6; }
+    50%      { height: 17px; opacity: 1; }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

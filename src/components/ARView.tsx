@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Compass,
   ChevronLeft,
   ChevronRight,
   AlertTriangle,
   Crosshair,
   List,
+  Radar,
+  X,
 } from 'lucide-react';
 import { SoundEvent } from '../types';
 import { resolveEvent } from '../data';
@@ -24,7 +25,7 @@ import { notifySoundEvent, requestSoundNotificationPermission } from '../pwa';
    waiting briefly before replacing the visible event list with the next sound.
    =========================================================================== */
 
-const NEXT_EVENT_DELAY_MS = 3500;
+const NEXT_EVENT_DELAY_MS = 2500;
 
 const HARD_CODED_EVENTS: SoundEvent[] = [
   {
@@ -111,9 +112,10 @@ const ringPoint = (cx: number, cy: number, r: number, deg: number): [number, num
 
 interface ARViewProps {
   onEventsChange?: (events: SoundEvent[]) => void;
+  onEventDetected?: (event: SoundEvent) => void;
 }
 
-export default function ARView({ onEventsChange }: ARViewProps) {
+export default function ARView({ onEventsChange, onEventDetected }: ARViewProps) {
   const [events, setEvents] = useState<SoundEvent[]>([]);
   const [nextIndex, setNextIndex] = useState(0);
   const [pendingNext, setPendingNext] = useState(false);
@@ -248,6 +250,7 @@ export default function ARView({ onEventsChange }: ARViewProps) {
       const nextEvents = [nextEvent];
       setEvents(nextEvents);
       onEventsChange?.(nextEvents);
+      onEventDetected?.(nextEvent);
       void notifySoundEvent(nextEvent);
       setNextIndex((index) => (index + 1) % HARD_CODED_EVENTS.length);
       setPendingNext(false);
@@ -572,17 +575,16 @@ export default function ARView({ onEventsChange }: ARViewProps) {
           />
         )}
 
-        {/* ===== Top status banner ===== */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 px-3 py-3 pl-16 pr-16">
-          <div className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 backdrop-blur">
-            <span className={`h-2 w-2 rounded-full animate-pulse bg-emerald-400`} />
+        {/* ===== Top status banner (right-aligned to clear the Detect control) ===== */}
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-end px-3"
+          style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
+        >
+          <div className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-2 backdrop-blur">
+            <span className="h-2 w-2 rounded-full animate-pulse bg-emerald-400" />
             <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-white">
               Surround Live
             </span>
-          </div>
-          <div className="flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 font-mono text-[11px] text-white backdrop-blur">
-            <Compass size={13} className={compassOn ? 'text-sky-300' : 'text-white/40'} />
-            {compassOn ? `${Math.round(heading)}° heading` : 'no compass'}
           </div>
         </div>
 
@@ -622,15 +624,32 @@ export default function ARView({ onEventsChange }: ARViewProps) {
       <button
         onClick={toggleNextEvent}
         disabled={pendingNext}
-        className={`absolute left-3 z-30 grid h-11 w-12 place-items-center rounded-full border font-mono text-sm font-black shadow-lg backdrop-blur transition active:scale-95 ${
+        className={`absolute left-3 z-30 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-[11px] font-black uppercase tracking-[0.14em] shadow-lg backdrop-blur transition active:scale-95 ${
           pendingNext
             ? 'border-cyan-200/20 bg-cyan-200/15 text-cyan-100/55'
-            : 'border-cyan-200/35 bg-black/65 text-cyan-100 hover:bg-cyan-200/15'
+            : events.length > 0
+              ? 'border-white/20 bg-black/65 text-white/80 hover:bg-white/10'
+              : 'border-cyan-200/35 bg-black/65 text-cyan-100 hover:bg-cyan-200/15'
         }`}
         style={{ top: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
-        aria-label="Show next scripted sound"
+        aria-label={events.length > 0 ? 'Clear detected sound' : 'Simulate a detected sound'}
       >
-        (N)
+        {pendingNext ? (
+          <>
+            <Radar size={15} className="animate-spin" />
+            Scanning
+          </>
+        ) : events.length > 0 ? (
+          <>
+            <X size={15} />
+            Clear
+          </>
+        ) : (
+          <>
+            <Radar size={15} />
+            Detect
+          </>
+        )}
       </button>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-4">
