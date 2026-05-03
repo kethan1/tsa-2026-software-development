@@ -637,17 +637,17 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
         {pendingNext ? (
           <>
             <Radar size={15} className="animate-spin" />
-            Scanning
+            S
           </>
         ) : events.length > 0 ? (
           <>
             <X size={15} />
-            Clear
+            C
           </>
         ) : (
           <>
             <Radar size={15} />
-            Detect
+            D
           </>
         )}
       </button>
