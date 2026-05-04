@@ -10,7 +10,7 @@ const app = express();
 const PORT = 3000;
 
 const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_TTS_MODEL = 'gemini-2.5-flash-preview-tts';
+const GEMINI_TTS_MODEL = 'gemini-3.1-flash-tts-preview';
 
 app.use(express.json({ limit: '25mb' }));
 

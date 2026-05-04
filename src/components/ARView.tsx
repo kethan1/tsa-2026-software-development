@@ -4,7 +4,6 @@ import {
   ChevronRight,
   AlertTriangle,
   Crosshair,
-  List,
   Radar,
   X,
 } from 'lucide-react';
@@ -12,34 +11,9 @@ import { SoundEvent } from '../types';
 import { resolveEvent } from '../data';
 import { notifySoundEvent, requestSoundNotificationPermission } from '../pwa';
 
-/* ===========================================================================
-   AR mode — augmented-reality sound awareness.
-
-   Hold up the phone: the rear camera fills the screen and a Fortnite-style
-   "directional damage indicator" (a ring with a glowing arc) points toward the
-   active sound. If the sound is outside the camera's field of view, a pulsing
-   arrow pins to the screen edge that's closest to it.
-
-   This is a hard-coded demo: the camera and scanning animation run whenever
-   the page is open. The corner N button advances through a short scripted list,
-   waiting briefly before replacing the visible event list with the next sound.
-   =========================================================================== */
-
 const NEXT_EVENT_DELAY_MS = 2500;
 
 const HARD_CODED_EVENTS: SoundEvent[] = [
-  {
-    id: 'demo-speech-front-left',
-    category: 'speech',
-    rawLabel: 'Conversation nearby',
-    icon: '💬',
-    urgency: 'normal',
-    confidence: 0.88,
-    loudness: 0.42,
-    directionDeg: 315,
-    timestamp: new Date(0),
-    source: 'demo',
-  },
   {
     id: 'demo-appliance-front',
     category: 'appliance',
@@ -49,18 +23,6 @@ const HARD_CODED_EVENTS: SoundEvent[] = [
     confidence: 0.9,
     loudness: 0.58,
     directionDeg: 18,
-    timestamp: new Date(0),
-    source: 'demo',
-  },
-  {
-    id: 'demo-footsteps-right',
-    category: 'footsteps',
-    rawLabel: 'Footsteps passing by',
-    icon: '👟',
-    urgency: 'normal',
-    confidence: 0.84,
-    loudness: 0.52,
-    directionDeg: 82,
     timestamp: new Date(0),
     source: 'demo',
   },
@@ -407,24 +369,45 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
               cy={cy}
               r={R}
               fill="none"
-              stroke="rgba(255,255,255,0.14)"
-              strokeWidth={1.5}
+              stroke="rgba(255,255,255,0.45)"
+              strokeWidth={2.5}
+              style={{ filter: 'drop-shadow(0 0 3px rgba(0,0,0,0.6))' }}
             />
 
-            {/* tick marks at front / right / back / left */}
-            {[0, 90, 180, 270].map((d) => {
+            {/* tick marks + labels at front / right / back / left */}
+            {([
+              [0, 'FRONT'],
+              [90, 'RIGHT'],
+              [180, 'BACK'],
+              [270, 'LEFT'],
+            ] as const).map(([d, label]) => {
               const [tx1, ty1] = ringPoint(cx, cy, R - 7, d);
               const [tx2, ty2] = ringPoint(cx, cy, R + 7, d);
+              const [lx, ly] = ringPoint(cx, cy, R + 22, d);
               return (
-                <line
-                  key={d}
-                  x1={tx1}
-                  y1={ty1}
-                  x2={tx2}
-                  y2={ty2}
-                  stroke="rgba(255,255,255,0.35)"
-                  strokeWidth={2}
-                />
+                <g key={d}>
+                  <line
+                    x1={tx1}
+                    y1={ty1}
+                    x2={tx2}
+                    y2={ty2}
+                    stroke="rgba(255,255,255,0.35)"
+                    strokeWidth={2}
+                  />
+                  <text
+                    x={lx}
+                    y={ly}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={11}
+                    fontWeight="bold"
+                    letterSpacing="1.5"
+                    fill="rgba(255,255,255,0.7)"
+                    style={{ textShadow: '0 0 4px rgba(0,0,0,0.8)' }}
+                  >
+                    {label}
+                  </text>
+                </g>
               );
             })}
 
@@ -651,47 +634,6 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
           </>
         )}
       </button>
-
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-4">
-        <section className="rounded-2xl border border-white/10 bg-black/58 p-3 text-white shadow-[0_16px_60px_rgba(0,0,0,0.42)] backdrop-blur-md">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <List size={15} className="text-cyan-100" />
-              <p className="font-mono text-[10px] font-black uppercase tracking-[0.2em] text-white/65">Detected events</p>
-            </div>
-            <p className="font-mono text-[10px] text-white/45">{events.length}</p>
-          </div>
-          {events.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-white/12 px-3 py-3 text-center text-xs text-white/45">
-              Scanning for sound
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {events.map((event) => {
-                const eventResolved = resolveEvent(event);
-                return (
-                  <article key={event.id} className="flex items-center gap-3 rounded-xl bg-white/8 px-3 py-2">
-                    <span className="text-2xl">{eventResolved.icon}</span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold text-white">{eventResolved.name}</p>
-                      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-white/48">
-                        {event.directionDeg}° · {cardinal(event.directionDeg)} · {Math.round(event.confidence * 100)}%
-                      </p>
-                    </div>
-                    <span
-                      className={`rounded-full px-2 py-1 font-mono text-[9px] font-black uppercase tracking-[0.1em] ${
-                        eventResolved.isCritical ? 'bg-red-400 text-[#210908]' : 'bg-cyan-200 text-[#061015]'
-                      }`}
-                    >
-                      {eventResolved.urgencyLabel}
-                    </span>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </section>
-      </div>
     </div>
   );
 }
