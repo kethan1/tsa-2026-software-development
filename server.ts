@@ -235,7 +235,7 @@ app.post('/api/synthesize-speech', async (req, res) => {
     const rawAudioBase64 = audioPart?.inlineData?.data;
     const audioMimeType = audioPart?.inlineData?.mimeType;
     if (!rawAudioBase64) {
-      return res.status(502).json({ error: 'Gemini did not return audio data.' });
+      return res.status(502).json({ error: 'Did not return audio data.' });
     }
 
     // Gemini hands back raw 16-bit PCM; wrap it in a WAV header for the browser.
@@ -245,7 +245,7 @@ app.post('/api/synthesize-speech', async (req, res) => {
 
     res.json({ audioBase64, mimeType: 'audio/wav', voice });
   } catch (err: any) {
-    console.error('Gemini speech synthesis failure:', err);
+    console.error('Speech synthesis failure:', err);
     res.status(500).json({ error: err.message || 'Speech synthesis pipeline internal crash.' });
   }
 });

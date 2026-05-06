@@ -361,7 +361,7 @@ function SpeechScreen() {
         body: JSON.stringify({ audioBase64, mimeType: blob.type || 'audio/webm' }),
       });
       const payload = (await response.json().catch(() => ({}))) as GeminiAnalyzeAudioResponse & { error?: string };
-      if (!response.ok) throw new Error(payload.error || 'Gemini could not analyze the recording.');
+      if (!response.ok) throw new Error(payload.error || 'Could not analyze the recording.');
 
       const transcript = payload.transcript?.trim();
       const fallback = [payload.label, payload.description].filter(Boolean).join(': ');
@@ -378,7 +378,7 @@ function SpeechScreen() {
         ...prev,
       ].slice(0, 24));
     } catch (error) {
-      setSpeechError(error instanceof Error ? error.message : 'Gemini speech analysis failed.');
+      setSpeechError(error instanceof Error ? error.message : 'Speech analysis failed.');
     } finally {
       setAnalyzing(false);
     }
@@ -445,7 +445,7 @@ function SpeechScreen() {
         body: JSON.stringify({ text, voice: ttsVoice }),
       });
       const payload = (await response.json().catch(() => ({}))) as { audioBase64?: string; mimeType?: string; error?: string };
-      if (!response.ok || !payload.audioBase64) throw new Error(payload.error || 'Gemini did not return speech audio.');
+      if (!response.ok || !payload.audioBase64) throw new Error(payload.error || 'Did not return speech audio.');
 
       if (audioUrlRef.current) window.URL.revokeObjectURL(audioUrlRef.current);
       const audioBlob = base64ToBlob(payload.audioBase64, payload.mimeType || 'audio/wav');
@@ -466,7 +466,7 @@ function SpeechScreen() {
         });
       }
     } catch (error) {
-      setTtsError(error instanceof Error ? error.message : 'Gemini speech synthesis failed.');
+      setTtsError(error instanceof Error ? error.message : 'Speech synthesis failed.');
       setSpeaking(false);
     }
   };
@@ -483,7 +483,7 @@ function SpeechScreen() {
   const speechStatus = recording
     ? 'Listening…'
     : analyzing
-      ? 'Transcribing with Gemini'
+      ? 'Transcribing'
       : speechSupported
         ? 'Ready'
         : 'Microphone unavailable';
@@ -509,7 +509,7 @@ function SpeechScreen() {
                   ? 'bg-cyan-300 text-[#061015] shadow-[0_0_34px_rgba(103,232,249,0.32)]'
                   : 'bg-white/10 text-white/30'
             }`}
-            aria-label={recording ? 'Stop recording speech' : 'Record speech for Gemini analysis'}
+            aria-label={recording ? 'Stop recording speech' : 'Record speech for analysis'}
           >
             {recording ? <MicOff size={24} /> : <Mic size={24} />}
           </button>
@@ -537,7 +537,7 @@ function SpeechScreen() {
                 <span key={bar} className="audio-bar w-1 rounded-full bg-red-300" style={{ animationDelay: `${bar * 0.12}s` }} />
               ))}
             </span>
-            <p className="text-sm leading-relaxed">Tap the mic again to send this clip to Gemini.</p>
+            <p className="text-sm leading-relaxed">Tap the mic again analyze this audio segment.</p>
           </div>
         )}
 
@@ -583,7 +583,7 @@ function SpeechScreen() {
           <div>
             <h3 className="font-display text-lg font-bold tracking-tight">Text to speech</h3>
             <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">
-              {speaking ? 'Playing Gemini audio' : 'Gemini voice output'}
+              {speaking ? 'Playing audio' : 'Voice output'}
             </p>
           </div>
           <Volume2 size={22} className="text-cyan-200/90" />
@@ -626,7 +626,7 @@ function SpeechScreen() {
                   ? 'bg-cyan-300 text-[#061015] shadow-[0_0_26px_rgba(103,232,249,0.28)]'
                   : 'bg-white/10 text-white/30'
             }`}
-            aria-label={speaking ? 'Stop speaking' : 'Speak text with Gemini'}
+            aria-label={speaking ? 'Stop speaking' : 'Speak text'}
           >
             {speaking ? <Square size={17} fill="currentColor" /> : <Send size={18} />}
           </button>
