@@ -265,7 +265,7 @@ function ScreenShell({
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {action}
-            <span className="grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] text-cyan-200/90">
+            <span className="grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-white/6 text-cyan-200/90">
               <Icon size={20} />
             </span>
           </div>
@@ -324,6 +324,8 @@ function SpeechScreen() {
   const audioChunksRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef('');
+  // Demo script: counts how many times speech-to-text has run this session.
+  const speechRunCountRef = useRef(0);
   const [speechSupported, setSpeechSupported] = useState(true);
   const [recording, setRecording] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -345,43 +347,42 @@ function SpeechScreen() {
     };
   }, []);
 
-  const analyzeRecording = async (blob: Blob) => {
-    if (blob.size < 800) {
-      setSpeechError('The recording was too short to analyze.');
+  // Hard-coded demo script: the first run returns a happy line, the second an
+  // angry line, and every run after that reports the device as overheating.
+  const analyzeRecording = async (_blob: Blob) => {
+    const run = speechRunCountRef.current + 1;
+    speechRunCountRef.current = run;
+
+    setSpeechError('');
+
+    if (run >= 3) {
+      setSpeechError('Sorry, audio device overheating.');
       return;
     }
 
     setAnalyzing(true);
-    setSpeechError('');
-    try {
-      const audioBase64 = await blobToBase64(blob);
-      const response = await fetch('/api/analyze-audio', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ audioBase64, mimeType: blob.type || 'audio/webm' }),
-      });
-      const payload = (await response.json().catch(() => ({}))) as GeminiAnalyzeAudioResponse & { error?: string };
-      if (!response.ok) throw new Error(payload.error || 'Could not analyze the recording.');
+    // Brief pause so the analysis still feels live during the demo.
+    await new Promise((resolve) => setTimeout(resolve, 900));
 
-      const transcript = payload.transcript?.trim();
-      const fallback = [payload.label, payload.description].filter(Boolean).join(': ');
-      const text = transcript || fallback || 'Audio captured, but no clear speech was detected.';
-      const speaker = payload.speaker ? `${payload.speaker}: ` : '';
-      setLines((prev) => [
+    const scripted =
+      run === 1
+        ? { text: 'This is really cool', emotion: 'happy' as EmotionId }
+        : { text: 'I am really mad', emotion: 'angry' as EmotionId };
+
+    setLines((prev) =>
+      [
         {
           id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          text: `${speaker}${text}`,
-          emotion: normalizeGeminiEmotion(payload.emotion, text),
-          confidence: typeof payload.confidence === 'number' ? payload.confidence : null,
+          text: scripted.text,
+          emotion: scripted.emotion,
+          confidence: 0.98,
           timestamp: new Date(),
         },
         ...prev,
-      ].slice(0, 24));
-    } catch (error) {
-      setSpeechError(error instanceof Error ? error.message : 'Speech analysis failed.');
-    } finally {
-      setAnalyzing(false);
-    }
+      ].slice(0, 24),
+    );
+
+    setAnalyzing(false);
   };
 
   const startRecording = async () => {
@@ -757,28 +758,6 @@ function SettingsScreen({
             {installed ? 'Installed' : canInstall ? 'Install' : 'Unavailable'}
           </button>
         </div>
-      </section>
-
-      <section className={`mt-4 ${CARD} p-4`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <SlidersHorizontal size={18} className="text-cyan-200/90" />
-            <h3 className="font-display text-lg font-bold tracking-tight">Sensitivity</h3>
-          </div>
-          <span className="font-mono text-sm font-black text-cyan-200">{Math.round(settings.sensitivity * 100)}%</span>
-        </div>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.05"
-          value={settings.sensitivity}
-          onChange={(event) => onSettingsChange((prev) => ({ ...prev, sensitivity: Number(event.target.value) }))}
-          className="mt-4 w-full"
-        />
-        <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.12em] text-white/40">
-          Higher picks up quieter, more distant sounds
-        </p>
       </section>
 
       <section className={`mt-4 ${CARD} p-4`}>
