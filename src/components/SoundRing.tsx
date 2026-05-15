@@ -1,4 +1,3 @@
-import React from 'react';
 import { SoundEvent } from '../types';
 import { resolveEvent } from '../data';
 import { ringPoint, signedAngle } from '../geo';

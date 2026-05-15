@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
-  History,
+  BatteryFull,
   List,
   MessageSquareText,
   Mic,
@@ -9,10 +9,10 @@ import {
   Radio,
   Send,
   Settings,
+  Signal,
   Square,
   Trash2,
-  Volume2,
-  Watch,
+  Wifi,
 } from 'lucide-react';
 
 import { SoundEvent, UserSettings } from './types';
@@ -137,8 +137,9 @@ export default function App() {
   };
 
   return (
-    <div className="h-dvh bg-[var(--color-canvas)] text-[var(--color-ink)]">
-      <div className="mx-auto flex h-full max-w-md flex-col bg-[var(--color-canvas)] sm:my-5 sm:h-[calc(100dvh-2.5rem)] sm:rounded-[2rem] sm:border sm:border-[var(--color-line)]">
+    <div className="flex h-dvh w-full justify-center bg-canvas text-ink sm:items-center sm:bg-[#070708] sm:p-6">
+      <div className="relative flex h-full w-full max-w-md flex-col overflow-hidden bg-canvas sm:h-[860px] sm:max-h-full sm:w-[392px] sm:rounded-[3.2rem] sm:border-[12px] sm:border-black sm:shadow-[0_40px_90px_-25px_rgba(0,0,0,0.95)] sm:ring-1 sm:ring-white/10">
+        <StatusBar />
         <main className="relative flex-1 min-h-0">
           <Screen active={screen === 'main'}>
             <ARView onEventsChange={handleRadarEventsChange} onEventDetected={handleEventDetected} />
@@ -166,7 +167,7 @@ export default function App() {
           </Screen>
         </main>
 
-        <nav className="z-30 grid shrink-0 grid-cols-4 border-t border-[var(--color-line)] bg-[var(--color-paper)]">
+        <nav className="z-30 grid shrink-0 grid-cols-4 border-t border-line bg-paper">
           {SCREENS.map(({ id, label, icon: Icon }) => {
             const active = screen === id;
             return (
@@ -175,8 +176,8 @@ export default function App() {
                 onClick={() => setScreen(id)}
                 className={`flex flex-col items-center gap-1 py-3 text-xs font-medium transition ${
                   active
-                    ? 'text-[var(--color-primary)]'
-                    : 'text-[var(--color-faint)] hover:text-[var(--color-mist)]'
+                    ? 'text-primary'
+                    : 'text-faint hover:text-mist'
                 }`}
               >
                 <Icon size={18} />
@@ -185,7 +186,36 @@ export default function App() {
             );
           })}
         </nav>
+
+        <div className="hidden shrink-0 items-center justify-center bg-paper pb-2 pt-1 sm:flex">
+          <span className="h-1 w-32 rounded-full bg-ink/25" />
+        </div>
       </div>
+    </div>
+  );
+}
+
+function StatusBar() {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 15000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const time = now
+    .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    .replace(/\s?[AP]M$/i, '');
+
+  return (
+    <div className="relative z-50 hidden h-11 shrink-0 items-center justify-between bg-canvas px-7 pt-1 text-ink sm:flex">
+      <span className="font-mono text-sm font-semibold tabular-nums tracking-tight">{time}</span>
+      <span className="absolute left-1/2 top-1.5 h-7 w-24 -translate-x-1/2 rounded-full bg-black" />
+      <span className="flex items-center gap-1.5">
+        <Signal size={15} strokeWidth={2.5} />
+        <Wifi size={15} strokeWidth={2.5} />
+        <BatteryFull size={24} strokeWidth={2} />
+      </span>
     </div>
   );
 }
@@ -200,13 +230,13 @@ function ScreenShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="h-full overflow-y-auto bg-[var(--color-canvas)] text-[var(--color-ink)]">
+    <div className="h-full overflow-y-auto bg-canvas text-ink">
       <div
         className="px-4 pb-6"
         style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
       >
-        <header className="mb-5 border-b border-[var(--color-line)] pb-3">
-          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--color-mist)]">
+        <header className="mb-5 border-b border-line pb-3">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-mist">
             {eyebrow}
           </p>
           <h2 className="mt-0.5 text-xl font-bold tracking-tight">{title}</h2>
@@ -224,30 +254,30 @@ function CriticalAlertPopup({ event, onDismiss }: { event: SoundEvent; onDismiss
       className="pointer-events-none absolute inset-x-3 z-40 flex justify-center"
       style={{ top: 'calc(env(safe-area-inset-top) + 4rem)' }}
     >
-      <section className="pointer-events-auto w-full max-w-sm animate-fade-in rounded-xl border border-[var(--color-danger)]/40 bg-[var(--color-paper)] p-4">
+      <section className="pointer-events-auto w-full max-w-sm animate-fade-in rounded-xl border border-danger/40 bg-paper p-4">
         <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 text-[var(--color-danger)]">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-danger/30 bg-danger/10 text-danger">
             <AlertTriangle size={20} />
           </div>
           <div className="min-w-0">
-            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--color-danger)]">
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-danger">
               Critical sound
             </p>
             <h2 className="mt-0.5 truncate text-base font-bold">{resolved.shortName}</h2>
           </div>
         </div>
-        <div className="mt-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-paper-2)] px-3 py-2.5">
-          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--color-faint)]">Direction</p>
+        <div className="mt-3 rounded-lg border border-line bg-paper-2 px-3 py-2.5">
+          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-faint">Direction</p>
           <p className="mt-0.5 text-base font-semibold">
             {directionLabel(event.directionDeg)} &middot; {event.directionDeg}&deg;
           </p>
-          <p className="mt-1 font-mono text-[11px] text-[var(--color-mist)]">
+          <p className="mt-1 font-mono text-[11px] text-mist">
             {Math.round(event.confidence * 100)}% &middot; {Math.round(event.loudness * 100)} dB
           </p>
         </div>
         <button
           onClick={onDismiss}
-          className="mt-3 w-full rounded-lg bg-[var(--color-danger)] px-4 py-2 text-sm font-bold text-white transition active:scale-[0.98]"
+          className="mt-3 w-full rounded-lg bg-danger px-4 py-2 text-sm font-bold text-white transition active:scale-[0.98]"
         >
           Dismiss
         </button>
@@ -430,8 +460,8 @@ function SpeechScreen() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-bold tracking-tight">Speech to text</h3>
-            <p className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-mist)]">
-              <span className={`h-1.5 w-1.5 rounded-full ${recording ? 'bg-[var(--color-danger)] animate-pulse' : analyzing ? 'bg-[var(--color-primary)] animate-pulse' : 'bg-emerald-400'}`} />
+            <p className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-mist">
+              <span className={`h-1.5 w-1.5 rounded-full ${recording ? 'bg-danger animate-pulse' : analyzing ? 'bg-primary animate-pulse' : 'bg-emerald-400'}`} />
               {speechStatus}
             </p>
           </div>
@@ -440,10 +470,10 @@ function SpeechScreen() {
             disabled={!speechSupported || analyzing}
             className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl transition active:scale-95 ${
               recording
-                ? 'bg-[var(--color-danger)] text-white'
+                ? 'bg-danger text-white'
                 : speechSupported && !analyzing
-                  ? 'bg-[var(--color-primary)] text-white'
-                  : 'bg-[var(--color-paper-2)] text-[var(--color-faint)]'
+                  ? 'bg-primary text-white'
+                  : 'bg-paper-2 text-faint'
             }`}
             aria-label={recording ? 'Stop recording' : 'Record speech'}
           >
@@ -470,21 +500,21 @@ function SpeechScreen() {
 
         <div className="mt-4 space-y-2">
           {lines.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-[var(--color-line)] bg-[var(--color-paper-2)] px-4 py-6 text-center text-sm text-[var(--color-faint)]">
+            <div className="rounded-lg border border-dashed border-line bg-paper-2 px-4 py-6 text-center text-sm text-faint">
               Captions will appear here
             </div>
           ) : (
             lines.map((line) => (
               <div
                 key={line.id}
-                className="rounded-lg border border-[var(--color-line)] bg-[var(--color-paper-2)] pl-3 pr-3 py-2.5"
+                className="rounded-lg border border-line bg-paper-2 pl-3 pr-3 py-2.5"
                 style={{ borderLeft: `3px solid ${EMOTION_COLORS[line.emotion]}` }}
               >
                 <div className="mb-1 flex items-center justify-between gap-3">
                   <span className="font-mono text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: EMOTION_COLORS[line.emotion] }}>
                     {line.emotion}
                   </span>
-                  <span className="shrink-0 font-mono text-[10px] text-[var(--color-faint)]">
+                  <span className="shrink-0 font-mono text-[10px] text-faint">
                     {line.confidence == null ? timeAgo(line.timestamp) : `${Math.round(line.confidence * 100)}%`}
                   </span>
                 </div>
@@ -497,7 +527,7 @@ function SpeechScreen() {
         {lines.length > 0 && (
           <button
             onClick={() => setLines([])}
-            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-paper-2)] px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--color-faint)] transition hover:text-[var(--color-ink)]"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-line bg-paper-2 px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-faint transition hover:text-ink"
           >
             <Trash2 size={13} />
             Clear
@@ -509,7 +539,7 @@ function SpeechScreen() {
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-bold tracking-tight">Text to speech</h3>
-            <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-mist)]">
+            <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-mist">
               {speaking ? 'Playing' : 'Voice output'}
             </p>
           </div>
@@ -525,17 +555,17 @@ function SpeechScreen() {
           value={speakText}
           onChange={(event) => setSpeakText(event.target.value)}
           rows={4}
-          className="w-full resize-none rounded-lg border border-[var(--color-line)] bg-[var(--color-canvas)] px-3 py-2.5 text-sm leading-relaxed text-[var(--color-ink)] outline-none transition placeholder:text-[var(--color-faint)] focus:border-[var(--color-primary)]"
+          className="w-full resize-none rounded-lg border border-line bg-canvas px-3 py-2.5 text-sm leading-relaxed text-ink outline-none transition placeholder:text-faint focus:border-primary"
           placeholder="Type what you want spoken aloud"
         />
 
         <div className="mt-3 flex gap-2">
           <label className="relative min-w-0 flex-1">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--color-faint)]">Voice</span>
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-faint">Voice</span>
             <select
               value={ttsVoice}
               onChange={(event) => setTtsVoice(event.target.value)}
-              className="w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-paper-2)] py-2.5 pl-12 pr-3 text-sm text-[var(--color-ink)] outline-none focus:border-[var(--color-primary)]"
+              className="w-full rounded-lg border border-line bg-paper-2 py-2.5 pl-12 pr-3 text-sm text-ink outline-none focus:border-primary"
             >
               {GEMINI_TTS_VOICES.map((voice) => (
                 <option key={voice} value={voice}>{voice}</option>
@@ -547,10 +577,10 @@ function SpeechScreen() {
             disabled={!speakText.trim()}
             className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg transition active:scale-95 ${
               speaking
-                ? 'bg-[var(--color-danger)] text-white'
+                ? 'bg-danger text-white'
                 : speakText.trim()
-                  ? 'bg-[var(--color-primary)] text-white'
-                  : 'bg-[var(--color-paper-2)] text-[var(--color-faint)]'
+                  ? 'bg-primary text-white'
+                  : 'bg-paper-2 text-faint'
             }`}
             aria-label={speaking ? 'Stop speaking' : 'Speak text'}
           >
@@ -577,9 +607,9 @@ function RecentSoundsScreen({ events, onClear }: { events: SoundEvent[]; onClear
       title="Recent"
     >
       {events.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-[var(--color-line)] bg-[var(--color-paper-2)] px-5 py-8 text-center">
+        <div className="rounded-lg border border-dashed border-line bg-paper-2 px-5 py-8 text-center">
           <p className="text-base font-bold tracking-tight">No sounds yet</p>
-          <p className="mt-1 text-sm leading-relaxed text-[var(--color-mist)]">
+          <p className="mt-1 text-sm leading-relaxed text-mist">
             Detections from Surround Sound appear here.
           </p>
         </div>
@@ -591,18 +621,18 @@ function RecentSoundsScreen({ events, onClear }: { events: SoundEvent[]; onClear
               <article
                 key={event.id}
                 className={`flex items-center gap-3 rounded-lg border p-3 ${
-                  resolved.isCritical ? 'border-[var(--color-danger)]/30 bg-[var(--color-danger)]/5' : 'border-[var(--color-line)] bg-[var(--color-paper)]'
+                  resolved.isCritical ? 'border-danger/30 bg-danger/5' : 'border-line bg-paper'
                 }`}
               >
                 <SoundBadge resolved={resolved} size={36} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="truncate text-sm font-bold tracking-tight">{resolved.shortName}</h3>
-                    <span className="shrink-0 font-mono text-[10px] text-[var(--color-faint)]">
+                    <span className="shrink-0 font-mono text-[10px] text-faint">
                       {timeAgo(event.timestamp)}
                     </span>
                   </div>
-                  <p className="mt-0.5 truncate font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--color-mist)]">
+                  <p className="mt-0.5 truncate font-mono text-[10px] uppercase tracking-[0.08em] text-mist">
                     {directionLabel(event.directionDeg)} &middot; {event.directionDeg}&deg; &middot; {Math.round(event.confidence * 100)}%
                   </p>
                 </div>
@@ -611,7 +641,7 @@ function RecentSoundsScreen({ events, onClear }: { events: SoundEvent[]; onClear
           })}
           <button
             onClick={onClear}
-            className="mt-2 w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-paper-2)] py-2 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--color-faint)] transition hover:text-[var(--color-ink)]"
+            className="mt-2 w-full rounded-lg border border-line bg-paper-2 py-2 font-mono text-[10px] font-bold uppercase tracking-widest text-faint transition hover:text-ink"
           >
             Clear all
           </button>
@@ -652,8 +682,8 @@ function SettingsScreen({
                 }
                 className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition ${
                   enabled
-                    ? 'border-[var(--color-primary)]/50 text-[var(--color-ink)]'
-                    : 'border-[var(--color-line)] text-[var(--color-faint)]'
+                    ? 'border-primary/50 text-ink'
+                    : 'border-line text-faint'
                 }`}
               >
                 <span className={`text-base ${enabled ? '' : 'opacity-40 grayscale'}`}>
@@ -673,7 +703,7 @@ function SettingsScreen({
           <h3 className="text-sm font-bold tracking-tight">Haptics</h3>
           <button
             onClick={() => onSettingsChange((prev) => ({ ...prev, haptics: !prev.haptics }))}
-            className={`h-6 w-10 rounded-full p-0.5 transition ${settings.haptics ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-paper-2)]'}`}
+            className={`h-6 w-10 rounded-full p-0.5 transition ${settings.haptics ? 'bg-primary' : 'bg-paper-2'}`}
             aria-label="Toggle haptics"
             aria-pressed={settings.haptics}
           >
@@ -686,23 +716,19 @@ function SettingsScreen({
           {CATEGORY_ORDER.slice(0, 4).map((category) => (
             <div
               key={category}
-              className="flex items-center justify-between rounded-lg border border-[var(--color-line)] bg-[var(--color-paper-2)] px-3 py-2"
+              className="flex items-center justify-between rounded-lg border border-line bg-paper-2 px-3 py-2"
             >
               <span className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.08em]">
                 <span className="text-sm">{categoryMetadata[category].icon}</span>
                 {categoryMetadata[category].shortName}
               </span>
-              <span className="font-mono text-[10px] text-[var(--color-faint)]">
+              <span className="font-mono text-[10px] text-faint">
                 {categoryHaptics[category]?.label || 'Default'}
               </span>
             </div>
           ))}
         </div>
       </section>
-
-      <p className="mt-5 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--color-faint)]">
-        SenseSync &middot; Sound awareness for the Deaf &amp; HoH
-      </p>
     </ScreenShell>
   );
 }

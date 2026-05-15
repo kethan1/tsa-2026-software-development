@@ -3,6 +3,8 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertTriangle,
+  Camera,
+  CameraOff,
   Crosshair,
   Radar,
   X,
@@ -53,6 +55,62 @@ const NOISE_AMP_DEG = 5;
 const CONE_HALF_DEG = 30;
 const SWEEP_HALF_DEG = 34;
 
+const RING_STEPS = 84;
+const POINT_MAX = 26;
+const POINT_GROW_S = 0.5;
+
+const easeOutCubic = (x: number) => 1 - Math.pow(1 - x, 3);
+
+// Builds the living compass outline: an ambient wriggle + breathing pulse,
+// plus a pointed bulge that grows toward `pointDeg` (the sound source).
+const wobbleRingPath = (
+  cx: number,
+  cy: number,
+  R: number,
+  t: number,
+  ambient: number,
+  pointDeg: number | null,
+  pointAmp: number,
+): string => {
+  const pts: [number, number][] = [];
+  const pulse = ambient * 2.4 * Math.sin(t * 1.5);
+  for (let i = 0; i < RING_STEPS; i += 1) {
+    const a = (i / RING_STEPS) * 360;
+    const rad = (a * Math.PI) / 180;
+    const wriggle =
+      ambient *
+      (1.8 * Math.sin(rad * 3 + t * 1.6) +
+        1.1 * Math.sin(rad * 5 - t * 2.3) +
+        0.6 * Math.sin(rad * 8 + t * 3.1));
+    let bump = 0;
+    if (pointDeg != null && pointAmp > 0) {
+      const d = ((a - pointDeg + 540) % 360) - 180;
+      // wide rounded base + narrow tip = a soft pointed spike
+      bump =
+        pointAmp *
+        (0.7 * Math.exp(-(d * d) / (2 * 17 * 17)) + 0.3 * Math.exp(-(d * d) / (2 * 7 * 7)));
+    }
+    pts.push(ringPoint(cx, cy, R + pulse + wriggle + bump, a));
+  }
+
+  const n = pts.length;
+  let d = `M ${pts[0][0].toFixed(2)} ${pts[0][1].toFixed(2)}`;
+  for (let i = 0; i < n; i += 1) {
+    const p0 = pts[(i - 1 + n) % n];
+    const p1 = pts[i];
+    const p2 = pts[(i + 1) % n];
+    const p3 = pts[(i + 2) % n];
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${p2[0].toFixed(
+      2,
+    )} ${p2[1].toFixed(2)}`;
+  }
+  return `${d} Z`;
+};
+
 const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const cardinal = (deg: number) => CARDINALS[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
 
@@ -85,7 +143,7 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
 
   const [dims, setDims] = useState({ w: 380, h: 560 });
 
-  const [noiseDeg, setNoiseDeg] = useState(0);
+  const [tick, setTick] = useState(0);
   const [reduceMotion, setReduceMotion] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -94,6 +152,8 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
   const nextTimer = useRef<number | null>(null);
   const orientHandler = useRef<((e: DeviceOrientationEvent) => void) | null>(null);
   const lastEventId = useRef<string | null>(null);
+  const tickRef = useRef(0);
+  const eventStartRef = useRef(0);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -225,6 +285,7 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
     if (!activeEvent) return;
     if (lastEventId.current === activeEvent.id) return;
     lastEventId.current = activeEvent.id;
+    eventStartRef.current = tickRef.current;
 
     setFlash(true);
     if ('vibrate' in navigator) navigator.vibrate([60, 40, 120, 40, 200]);
@@ -233,24 +294,22 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
   }, [activeEvent]);
 
   useEffect(() => {
-    const live = !!activeEvent;
-    if (!live || reduceMotion) {
-      setNoiseDeg(0);
+    if (reduceMotion) {
+      tickRef.current = 0;
+      setTick(0);
       return;
     }
     let raf = 0;
     const start = performance.now();
     const loop = (now: number) => {
       const t = (now - start) / 1000;
-      const n =
-        NOISE_AMP_DEG *
-        (0.6 * Math.sin(t * 2.3) + 0.3 * Math.sin(t * 5.7 + 1.3) + 0.1 * Math.sin(t * 11 + 0.7));
-      setNoiseDeg(n);
+      tickRef.current = t;
+      setTick(t);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [activeEvent, reduceMotion]);
+  }, [reduceMotion]);
 
   const showIndicator = !!activeEvent;
   const resolved = activeEvent ? resolveEvent(activeEvent) : null;
@@ -262,8 +321,22 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
   const cy = h / 2;
   const R = Math.max(70, Math.min(w, h) * 0.34);
 
+  const noiseDeg =
+    activeEvent && !reduceMotion
+      ? NOISE_AMP_DEG *
+        (0.6 * Math.sin(tick * 2.3) + 0.3 * Math.sin(tick * 5.7 + 1.3) + 0.1 * Math.sin(tick * 11 + 0.7))
+      : 0;
   const relative = activeEvent ? signedAngle(activeEvent.directionDeg - heading) : 0;
   const displayRelative = relative + noiseDeg;
+
+  const ambient = reduceMotion ? 0 : 1;
+  const grow = activeEvent
+    ? reduceMotion
+      ? 1
+      : easeOutCubic(Math.min(1, Math.max(0, (tick - eventStartRef.current) / POINT_GROW_S)))
+    : 0;
+  const pointAmp = activeEvent ? grow * POINT_MAX * (1 + (reduceMotion ? 0 : 0.12 * Math.sin(tick * 3))) : 0;
+  const ringPath = wobbleRingPath(cx, cy, R, tick, ambient, activeEvent ? displayRelative : null, pointAmp);
   const offScreen = Math.abs(relative) > HALF_FOV;
   const onRight = relative >= 0;
 
@@ -276,11 +349,14 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
   const [cone2x, cone2y] = ringPoint(cx, cy, R, displayRelative + CONE_HALF_DEG);
   const conePath = `M ${cx} ${cy} L ${cone1x} ${cone1y} A ${R} ${R} 0 0 1 ${cone2x} ${cone2y} Z`;
 
+  const [point0x, point0y] = ringPoint(cx, cy, 12, displayRelative);
+  const [point1x, point1y] = ringPoint(cx, cy, R - 6, displayRelative);
+
   const [sweep1x, sweep1y] = ringPoint(cx, cy, R, -SWEEP_HALF_DEG);
   const [sweep2x, sweep2y] = ringPoint(cx, cy, R, SWEEP_HALF_DEG);
   const sweepPath = `M ${cx} ${cy} L ${sweep1x} ${sweep1y} A ${R} ${R} 0 0 1 ${sweep2x} ${sweep2y} Z`;
 
-  const reticleX = cx + (displayRelative / HALF_FOV) * (w / 2 - 44);
+  const [reticleX, reticleY] = ringPoint(cx, cy, R + 16, displayRelative);
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black">
@@ -306,14 +382,17 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
           >
             <defs>
               <radialGradient id="ar-cone-grad" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor={arcColor} stopOpacity="0.25" />
-                <stop offset="70%" stopColor={arcColor} stopOpacity="0.08" />
+                <stop offset="0%" stopColor={arcColor} stopOpacity="0.42" />
+                <stop offset="70%" stopColor={arcColor} stopOpacity="0.14" />
                 <stop offset="100%" stopColor={arcColor} stopOpacity="0" />
               </radialGradient>
               <radialGradient id="ar-sweep-grad" cx="50%" cy="50%" r="50%">
                 <stop offset="55%" stopColor={arcColor} stopOpacity="0" />
                 <stop offset="100%" stopColor={arcColor} stopOpacity="0.15" />
               </radialGradient>
+              <filter id="ar-glow" x="-60%" y="-60%" width="220%" height="220%">
+                <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor={arcColor} floodOpacity="0.9" />
+              </filter>
             </defs>
 
             {!reduceMotion && (
@@ -331,13 +410,13 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
               </g>
             )}
 
-            <circle
-              cx={cx}
-              cy={cy}
-              r={R}
+            <path d={ringPath} fill="none" stroke="rgba(0,0,0,0.45)" strokeWidth={5} strokeLinejoin="round" />
+            <path
+              d={ringPath}
               fill="none"
-              stroke="rgba(255,255,255,0.25)"
-              strokeWidth={1.5}
+              stroke="rgba(255,255,255,0.85)"
+              strokeWidth={2.5}
+              strokeLinejoin="round"
             />
 
             {([
@@ -346,8 +425,8 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
               [180, 'BACK'],
               [270, 'LEFT'],
             ] as const).map(([d, label]) => {
-              const [tx1, ty1] = ringPoint(cx, cy, R - 5, d);
-              const [tx2, ty2] = ringPoint(cx, cy, R + 5, d);
+              const [tx1, ty1] = ringPoint(cx, cy, R - 7, d);
+              const [tx2, ty2] = ringPoint(cx, cy, R + 7, d);
               const [lx, ly] = ringPoint(cx, cy, R + 18, d);
               return (
                 <g key={d}>
@@ -356,18 +435,21 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
                     y1={ty1}
                     x2={tx2}
                     y2={ty2}
-                    stroke="rgba(255,255,255,0.25)"
-                    strokeWidth={1.5}
+                    stroke="rgba(255,255,255,0.85)"
+                    strokeWidth={2.5}
                   />
                   <text
                     x={lx}
                     y={ly}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fontSize={10}
+                    fontSize={11}
                     fontWeight="bold"
                     letterSpacing="1.5"
-                    fill="rgba(255,255,255,0.5)"
+                    fill="white"
+                    stroke="rgba(0,0,0,0.5)"
+                    strokeWidth={0.6}
+                    paintOrder="stroke"
                   >
                     {label}
                   </text>
@@ -384,9 +466,9 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
                   x2={cone1x}
                   y2={cone1y}
                   stroke={arcColor}
-                  strokeWidth={0.8}
+                  strokeWidth={1}
                   strokeDasharray="2 4"
-                  opacity={0.35}
+                  opacity={0.5}
                 />
                 <line
                   x1={cx}
@@ -394,27 +476,34 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
                   x2={cone2x}
                   y2={cone2y}
                   stroke={arcColor}
-                  strokeWidth={0.8}
+                  strokeWidth={1}
                   strokeDasharray="2 4"
-                  opacity={0.35}
+                  opacity={0.5}
                 />
 
-                <g className="ar-arc-pulse">
+                <g className="ar-arc-pulse" filter="url(#ar-glow)">
+                  <line
+                    x1={point0x}
+                    y1={point0y}
+                    x2={point1x}
+                    y2={point1y}
+                    stroke={arcColor}
+                    strokeWidth={5}
+                    strokeLinecap="round"
+                  />
                   <path
                     d={arcPath}
                     fill="none"
                     stroke={arcColor}
-                    strokeWidth={5}
+                    strokeWidth={9}
                     strokeLinecap="round"
-                    opacity={0.85}
                   />
                   <g transform={`translate(${mx} ${my}) rotate(${displayRelative})`}>
                     <path
-                      d="M -7 5 L 0 -6 L 7 5"
-                      fill="none"
-                      stroke={arcColor}
-                      strokeWidth={2.5}
-                      strokeLinecap="round"
+                      d="M -13 9 L 0 -12 L 13 9 Z"
+                      fill={arcColor}
+                      stroke="white"
+                      strokeWidth={1.5}
                       strokeLinejoin="round"
                     />
                   </g>
@@ -436,51 +525,14 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
             <circle cx={cx} cy={cy} r={3.5} fill="white" opacity={0.8} />
           </svg>
 
-        {showIndicator && !offScreen && resolved && (
+        {showIndicator && resolved && (
           <div
-            className="pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
-            style={{ left: `${reticleX}px` }}
+            className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
+            style={{ left: `${reticleX}px`, top: `${reticleY}px` }}
           >
-            <div
-              className={`flex flex-col items-center gap-1 ${
-                isEmergency ? 'text-red-400' : 'text-[var(--color-primary)]'
-              }`}
-            >
-              <Crosshair size={48} strokeWidth={1.5} className="animate-ping opacity-30 absolute" />
-              <Crosshair size={48} strokeWidth={1.5} />
-              <span className="mt-1 rounded-lg bg-black/70 px-2 py-0.5 text-2xl">
-                {resolved.icon}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {showIndicator && offScreen && resolved && (
-          <div
-            className={`pointer-events-none absolute top-1/2 -translate-y-1/2 ${
-              onRight ? 'right-3' : 'left-3'
-            }`}
-          >
-            <div
-              className={`flex flex-col items-center gap-1.5 ${onRight ? 'ar-chev-right' : 'ar-chev-left'}`}
-            >
-              <div
-                className={`flex h-14 w-14 items-center justify-center rounded-full border-2 ${
-                  isEmergency
-                    ? 'border-red-400 bg-red-500/20 text-red-200'
-                    : 'border-[var(--color-primary)] bg-[var(--color-primary)]/20 text-[var(--color-primary)]'
-                }`}
-              >
-                {onRight ? (
-                  <ChevronRight size={36} strokeWidth={2.5} />
-                ) : (
-                  <ChevronLeft size={36} strokeWidth={2.5} />
-                )}
-              </div>
-              <span className="rounded-lg bg-black/70 px-2 py-0.5 text-xl">
-                {resolved.icon}
-              </span>
-            </div>
+            <span className="rounded-lg bg-black/70 px-2 py-0.5 text-2xl">
+              {resolved.icon}
+            </span>
           </div>
         )}
 
@@ -501,15 +553,22 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
         )}
 
         <div
-          className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-end px-3"
+          className="absolute inset-x-0 top-0 flex items-start justify-end gap-2 px-3"
           style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
         >
-          <div className="flex items-center gap-2 rounded-lg bg-black/60 px-2.5 py-1.5">
-            <span className="h-1.5 w-1.5 rounded-full animate-pulse bg-emerald-400" />
-            <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-white/80">
-              Surround Live
-            </span>
-          </div>
+          <button
+            onClick={cameraOn ? stopCamera : startCamera}
+            className={`z-30 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider transition active:scale-95 ${
+              cameraOn
+                ? 'border-white/10 bg-black/60 text-white/80 hover:bg-black/80'
+                : 'border-primary/40 bg-black/60 text-primary hover:bg-black/80'
+            }`}
+            aria-label={cameraOn ? 'Turn camera off' : 'Turn camera on'}
+            aria-pressed={cameraOn}
+          >
+            {cameraOn ? <Camera size={13} /> : <CameraOff size={13} />}
+            {cameraOn ? 'Cam' : 'Off'}
+          </button>
         </div>
 
         {showIndicator && resolved && activeEvent && (
@@ -518,7 +577,7 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
               className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${
                 isEmergency
                   ? 'border-red-400/40 bg-black/70 text-red-50'
-                  : 'border-[var(--color-primary)]/30 bg-black/70 text-[var(--color-ink)]'
+                  : 'border-primary/30 bg-black/70 text-ink'
               }`}
             >
               <span className="text-2xl">{resolved.icon}</span>
@@ -527,9 +586,24 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
                   {isEmergency && <AlertTriangle size={14} className="text-red-300" />}
                   {resolved.name}
                 </p>
-                <p className="font-mono text-[10px] opacity-70">
-                  {activeEvent.directionDeg}\u00b0 &middot; {cardinal(activeEvent.directionDeg)} &middot;{' '}
-                  {offScreen ? (onRight ? 'turn right \u2192' : '\u2190 turn left') : 'in view'} &middot;{' '}
+                <p
+                  className={`mt-0.5 flex items-center gap-1 text-base font-bold ${
+                    isEmergency ? 'text-red-300' : 'text-primary'
+                  }`}
+                >
+                  {offScreen ? (
+                    onRight ? (
+                      <ChevronRight size={18} strokeWidth={3} />
+                    ) : (
+                      <ChevronLeft size={18} strokeWidth={3} />
+                    )
+                  ) : (
+                    <Crosshair size={15} strokeWidth={3} />
+                  )}
+                  {offScreen ? (onRight ? 'Turn right' : 'Turn left') : 'In view'}
+                </p>
+                <p className="mt-0.5 font-mono text-[10px] opacity-70">
+                  {cardinal(activeEvent.directionDeg)} &middot; {activeEvent.directionDeg}&deg; &middot;{' '}
                   {Math.round(activeEvent.confidence * 100)}%
                 </p>
               </div>
@@ -552,7 +626,7 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
             ? 'border-white/10 bg-black/50 text-white/50'
             : events.length > 0
               ? 'border-white/10 bg-black/60 text-white/70 hover:bg-black/80'
-              : 'border-[var(--color-primary)]/40 bg-black/60 text-[var(--color-primary)] hover:bg-black/80'
+              : 'border-primary/40 bg-black/60 text-primary hover:bg-black/80'
         }`}
         style={{ top: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
         aria-label={events.length > 0 ? 'Clear detected sound' : 'Simulate a detected sound'}
