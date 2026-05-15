@@ -735,31 +735,6 @@ function SettingsScreen({
 }) {
   return (
     <ScreenShell eyebrow="Sensitivity · alerts · haptics" title="Settings" icon={Settings}>
-      <section className={`${CARD} p-4`}>
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-cyan-300/12 text-cyan-200">
-              <Download size={19} />
-            </span>
-            <div>
-              <h3 className="font-display text-lg font-bold tracking-tight">Install app</h3>
-              <p className="text-xs leading-relaxed text-white/45">
-                {installed ? 'SenseSync is installed on this device.' : 'Add SenseSync to your home screen.'}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onInstall}
-            disabled={!canInstall}
-            className={`shrink-0 rounded-full px-4 py-2 font-mono text-[10px] font-black uppercase tracking-[0.12em] transition ${
-              canInstall ? 'bg-cyan-300 text-[#061015] active:scale-95' : 'bg-white/8 text-white/35'
-            }`}
-          >
-            {installed ? 'Installed' : canInstall ? 'Install' : 'Unavailable'}
-          </button>
-        </div>
-      </section>
-
       <section className={`mt-4 ${CARD} p-4`}>
         <div className="mb-3 flex items-center gap-2.5">
           <Volume2 size={18} className="text-cyan-200/90" />
