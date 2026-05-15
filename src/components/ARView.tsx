@@ -55,61 +55,7 @@ const NOISE_AMP_DEG = 5;
 const CONE_HALF_DEG = 30;
 const SWEEP_HALF_DEG = 34;
 
-const RING_STEPS = 84;
-const POINT_MAX = 26;
-const POINT_GROW_S = 0.5;
 
-const easeOutCubic = (x: number) => 1 - Math.pow(1 - x, 3);
-
-// Builds the living compass outline: an ambient wriggle + breathing pulse,
-// plus a pointed bulge that grows toward `pointDeg` (the sound source).
-const wobbleRingPath = (
-  cx: number,
-  cy: number,
-  R: number,
-  t: number,
-  ambient: number,
-  pointDeg: number | null,
-  pointAmp: number,
-): string => {
-  const pts: [number, number][] = [];
-  const pulse = ambient * 2.4 * Math.sin(t * 1.5);
-  for (let i = 0; i < RING_STEPS; i += 1) {
-    const a = (i / RING_STEPS) * 360;
-    const rad = (a * Math.PI) / 180;
-    const wriggle =
-      ambient *
-      (1.8 * Math.sin(rad * 3 + t * 1.6) +
-        1.1 * Math.sin(rad * 5 - t * 2.3) +
-        0.6 * Math.sin(rad * 8 + t * 3.1));
-    let bump = 0;
-    if (pointDeg != null && pointAmp > 0) {
-      const d = ((a - pointDeg + 540) % 360) - 180;
-      // wide rounded base + narrow tip = a soft pointed spike
-      bump =
-        pointAmp *
-        (0.7 * Math.exp(-(d * d) / (2 * 17 * 17)) + 0.3 * Math.exp(-(d * d) / (2 * 7 * 7)));
-    }
-    pts.push(ringPoint(cx, cy, R + pulse + wriggle + bump, a));
-  }
-
-  const n = pts.length;
-  let d = `M ${pts[0][0].toFixed(2)} ${pts[0][1].toFixed(2)}`;
-  for (let i = 0; i < n; i += 1) {
-    const p0 = pts[(i - 1 + n) % n];
-    const p1 = pts[i];
-    const p2 = pts[(i + 1) % n];
-    const p3 = pts[(i + 2) % n];
-    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
-    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
-    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
-    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
-    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${p2[0].toFixed(
-      2,
-    )} ${p2[1].toFixed(2)}`;
-  }
-  return `${d} Z`;
-};
 
 const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const cardinal = (deg: number) => CARDINALS[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
@@ -329,14 +275,7 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
   const relative = activeEvent ? signedAngle(activeEvent.directionDeg - heading) : 0;
   const displayRelative = relative + noiseDeg;
 
-  const ambient = reduceMotion ? 0 : 1;
-  const grow = activeEvent
-    ? reduceMotion
-      ? 1
-      : easeOutCubic(Math.min(1, Math.max(0, (tick - eventStartRef.current) / POINT_GROW_S)))
-    : 0;
-  const pointAmp = activeEvent ? grow * POINT_MAX * (1 + (reduceMotion ? 0 : 0.12 * Math.sin(tick * 3))) : 0;
-  const ringPath = wobbleRingPath(cx, cy, R, tick, ambient, activeEvent ? displayRelative : null, pointAmp);
+  const ringPath = `M ${cx} ${cy - R} A ${R} ${R} 0 1 1 ${cx - 0.01} ${cy - R}`;
   const offScreen = Math.abs(relative) > HALF_FOV;
   const onRight = relative >= 0;
 
@@ -378,7 +317,7 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
             width="100%"
             height="100%"
             viewBox={`0 0 ${w} ${h}`}
-            preserveAspectRatio="none"
+            preserveAspectRatio="xMidYMid slice"
           >
             <defs>
               <radialGradient id="ar-cone-grad" cx="50%" cy="50%" r="50%">

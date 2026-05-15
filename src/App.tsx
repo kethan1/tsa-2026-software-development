@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
-  BatteryFull,
   List,
   MessageSquareText,
   Mic,
@@ -9,10 +8,8 @@ import {
   Radio,
   Send,
   Settings,
-  Signal,
   Square,
   Trash2,
-  Wifi,
 } from 'lucide-react';
 
 import { SoundEvent, UserSettings } from './types';
@@ -83,39 +80,6 @@ const detectEmotion = (value: string): EmotionId => {
   return 'neutral';
 };
 
-const GEMINI_TTS_VOICES = ['Kore', 'Puck', 'Zephyr', 'Aoede', 'Charon', 'Leda', 'Fenrir', 'Orus'];
-
-const normalizeGeminiEmotion = (emotion: string | undefined, fallbackText: string): EmotionId => {
-  const value = (emotion || '').toLowerCase();
-  if (/angry|mad|furious|annoyed|frustrated|irritated/.test(value)) return 'angry';
-  if (/urgent|afraid|fear|panicked|alarmed|stressed/.test(value)) return 'urgent';
-  if (/happy|cheerful|joy|excited|laugh|positive/.test(value)) return 'happy';
-  if (/sad|upset|cry|worried|tired|somber/.test(value)) return 'sad';
-  if (/calm|relaxed|neutral calm|peaceful|steady/.test(value)) return 'calm';
-  if (/neutral|flat|unclear/.test(value)) return 'neutral';
-  return detectEmotion(fallbackText);
-};
-
-const blobToBase64 = (blob: Blob) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = typeof reader.result === 'string' ? reader.result : '';
-      resolve(result.includes(',') ? result.split(',')[1] : result);
-    };
-    reader.onerror = () => reject(new Error('Could not read recorded audio.'));
-    reader.readAsDataURL(blob);
-  });
-
-const base64ToBlob = (base64: string, mimeType: string) => {
-  const binary = window.atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return new Blob([bytes], { type: mimeType });
-};
-
 export default function App() {
   const [screen, setScreen] = useState<ScreenId>('main');
   const [liveEvents, setLiveEvents] = useState<SoundEvent[]>([]);
@@ -138,9 +102,8 @@ export default function App() {
 
   return (
     <div className="flex h-dvh w-full justify-center bg-canvas text-ink sm:items-center sm:bg-[#070708] sm:p-6">
-      <div className="relative flex h-full w-full max-w-md flex-col overflow-hidden bg-canvas sm:h-[860px] sm:max-h-full sm:w-[392px] sm:rounded-[3.2rem] sm:border-[12px] sm:border-black sm:shadow-[0_40px_90px_-25px_rgba(0,0,0,0.95)] sm:ring-1 sm:ring-white/10">
-        <StatusBar />
-        <main className="relative flex-1 min-h-0">
+      <div className="relative flex h-full w-full max-w-md flex-col overflow-hidden bg-canvas sm:h-[860px] sm:max-h-full sm:w-[392px] sm:rounded-[3.2rem] sm:shadow-[0_40px_90px_-25px_rgba(0,0,0,0.95)] sm:ring-1 sm:ring-white/10">
+        <main className="relative flex-1 min-h-0 pb-20">
           <Screen active={screen === 'main'}>
             <ARView onEventsChange={handleRadarEventsChange} onEventDetected={handleEventDetected} />
             {showCriticalPopup && critical && (
@@ -167,7 +130,7 @@ export default function App() {
           </Screen>
         </main>
 
-        <nav className="z-30 grid shrink-0 grid-cols-4 border-t border-line bg-paper">
+        <nav className="absolute inset-x-3 bottom-4 z-30 grid grid-cols-4 rounded-2xl border border-white/[0.06] bg-paper/80 px-2 backdrop-blur-xl shadow-lg shadow-black/20">
           {SCREENS.map(({ id, label, icon: Icon }) => {
             const active = screen === id;
             return (
@@ -186,46 +149,15 @@ export default function App() {
             );
           })}
         </nav>
-
-        <div className="hidden shrink-0 items-center justify-center bg-paper pb-2 pt-1 sm:flex">
-          <span className="h-1 w-32 rounded-full bg-ink/25" />
-        </div>
       </div>
     </div>
   );
 }
 
-function StatusBar() {
-  const [now, setNow] = useState(() => new Date());
-
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 15000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  const time = now
-    .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-    .replace(/\s?[AP]M$/i, '');
-
-  return (
-    <div className="relative z-50 hidden h-11 shrink-0 items-center justify-between bg-canvas px-7 pt-1 text-ink sm:flex">
-      <span className="font-mono text-sm font-semibold tabular-nums tracking-tight">{time}</span>
-      <span className="absolute left-1/2 top-1.5 h-7 w-24 -translate-x-1/2 rounded-full bg-black" />
-      <span className="flex items-center gap-1.5">
-        <Signal size={15} strokeWidth={2.5} />
-        <Wifi size={15} strokeWidth={2.5} />
-        <BatteryFull size={24} strokeWidth={2} />
-      </span>
-    </div>
-  );
-}
-
 function ScreenShell({
-  eyebrow,
   title,
   children,
 }: {
-  eyebrow: string;
   title: string;
   children: React.ReactNode;
 }) {
@@ -233,13 +165,10 @@ function ScreenShell({
     <div className="h-full overflow-y-auto bg-canvas text-ink">
       <div
         className="px-4 pb-6"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
+        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.5rem)' }}
       >
         <header className="mb-5 border-b border-line pb-3">
-          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-mist">
-            {eyebrow}
-          </p>
-          <h2 className="mt-0.5 text-xl font-bold tracking-tight">{title}</h2>
+          <h2 className="text-xl font-bold tracking-tight">{title}</h2>
         </header>
         {children}
       </div>
@@ -286,192 +215,179 @@ function CriticalAlertPopup({ event, onDismiss }: { event: SoundEvent; onDismiss
   );
 }
 
-
 function SpeechScreen() {
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioUrlRef = useRef('');
-  const speechRunCountRef = useRef(0);
-  const [speechSupported, setSpeechSupported] = useState(true);
+  const recognitionRef = useRef<any>(null);
+  const isRecordingRef = useRef(false);
+  const [sttSupported, setSttSupported] = useState(true);
   const [recording, setRecording] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
   const [speechError, setSpeechError] = useState('');
   const [lines, setLines] = useState<SpeechLine[]>([]);
+  const [interimText, setInterimText] = useState('');
   const [speakText, setSpeakText] = useState('I need a quiet route to the exit, please.');
-  const [ttsVoice, setTtsVoice] = useState(GEMINI_TTS_VOICES[0]);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceName, setSelectedVoiceName] = useState('');
   const [speaking, setSpeaking] = useState(false);
   const [ttsError, setTtsError] = useState('');
-  const [ttsAudioUrl, setTtsAudioUrl] = useState('');
 
   useEffect(() => {
-    setSpeechSupported(Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder));
+    const SpeechRecognitionAPI =
+      (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+    setSttSupported(Boolean(SpeechRecognitionAPI));
+
+    const synth = window.speechSynthesis;
+    if (synth) {
+      const loadVoices = () => {
+        const available = synth.getVoices();
+        if (available.length > 0) {
+          setVoices(available);
+          setSelectedVoiceName((prev) => prev || available[0].name);
+        }
+      };
+      loadVoices();
+      synth.addEventListener('voiceschanged', loadVoices);
+      return () => {
+        synth.removeEventListener('voiceschanged', loadVoices);
+        synth.cancel();
+        recognitionRef.current?.abort();
+      };
+    }
     return () => {
-      const recorder = mediaRecorderRef.current;
-      if (recorder && recorder.state !== 'inactive') recorder.stop();
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-      if (audioUrlRef.current) window.URL.revokeObjectURL(audioUrlRef.current);
+      recognitionRef.current?.abort();
     };
   }, []);
 
-  const analyzeRecording = async (_blob: Blob) => {
-    const run = speechRunCountRef.current + 1;
-    speechRunCountRef.current = run;
+  const startRecording = () => {
+    const SpeechRecognitionAPI =
+      (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionAPI) {
+      setSpeechError('Speech recognition is not available in this browser.');
+      return;
+    }
 
     setSpeechError('');
+    const recognition = new SpeechRecognitionAPI();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
 
-    if (run >= 3) {
-      setSpeechError('Sorry, audio device overheating.');
-      return;
-    }
+    recognition.onresult = (event: any) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          const text = result[0].transcript;
+          setLines((prev) =>
+            [
+              {
+                id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                text,
+                emotion: detectEmotion(text),
+                confidence: result[0].confidence ?? null,
+                timestamp: new Date(),
+              },
+              ...prev,
+            ].slice(0, 24),
+          );
+        } else {
+          interim += result[0].transcript;
+        }
+      }
+      setInterimText(interim);
+    };
 
-    setAnalyzing(true);
-    await new Promise((resolve) => setTimeout(resolve, 900));
-
-    const scripted =
-      run === 1
-        ? { text: 'This is really cool', emotion: 'happy' as EmotionId }
-        : { text: 'I am really mad', emotion: 'angry' as EmotionId };
-
-    setLines((prev) =>
-      [
-        {
-          id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          text: scripted.text,
-          emotion: scripted.emotion,
-          confidence: 0.98,
-          timestamp: new Date(),
-        },
-        ...prev,
-      ].slice(0, 24),
-    );
-
-    setAnalyzing(false);
-  };
-
-  const startRecording = async () => {
-    if (!speechSupported) {
-      setSpeechError('Microphone recording is not available in this browser.');
-      return;
-    }
-
-    try {
-      setSpeechError('');
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      audioChunksRef.current = [];
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/mp4')
-          ? 'audio/mp4'
-          : '';
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) audioChunksRef.current.push(event.data);
-      };
-      recorder.onerror = () => {
-        setSpeechError('Microphone recording failed.');
-        setRecording(false);
-      };
-      recorder.onstop = () => {
-        const clip = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
-        stream.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-        mediaRecorderRef.current = null;
-        setRecording(false);
-        void analyzeRecording(clip);
-      };
-
-      mediaRecorderRef.current = recorder;
-      recorder.start();
-      setRecording(true);
-    } catch (error) {
-      setSpeechError(error instanceof Error ? error.message : 'Microphone permission was denied.');
+    recognition.onerror = (event: any) => {
+      if (event.error === 'network' || event.error === 'no-speech' || event.error === 'aborted') return;
+      setSpeechError(`Recognition error: ${event.error}`);
       setRecording(false);
-    }
+      isRecordingRef.current = false;
+    };
+
+    recognition.onend = () => {
+      if (isRecordingRef.current) {
+        try {
+          recognition.start();
+        } catch {
+          // browser may be busy
+        }
+      } else {
+        setRecording(false);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    isRecordingRef.current = true;
+    recognition.start();
+    setRecording(true);
   };
 
   const stopRecording = () => {
-    const recorder = mediaRecorderRef.current;
-    if (recorder && recorder.state !== 'inactive') recorder.stop();
+    isRecordingRef.current = false;
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setRecording(false);
+    setInterimText('');
   };
 
-  const speak = async () => {
+  const speak = () => {
     const text = speakText.trim();
     if (!text) return;
 
-    setSpeaking(true);
-    setTtsError('');
-    try {
-      const response = await fetch('/api/synthesize-speech', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice: ttsVoice }),
-      });
-      const payload = (await response.json().catch(() => ({}))) as { audioBase64?: string; mimeType?: string; error?: string };
-      if (!response.ok || !payload.audioBase64) throw new Error(payload.error || 'Did not return speech audio.');
-
-      if (audioUrlRef.current) window.URL.revokeObjectURL(audioUrlRef.current);
-      const audioBlob = base64ToBlob(payload.audioBase64, payload.mimeType || 'audio/wav');
-      const nextUrl = window.URL.createObjectURL(audioBlob);
-      audioUrlRef.current = nextUrl;
-      setTtsAudioUrl(nextUrl);
-
-      const audio = audioRef.current;
-      if (audio) {
-        audio.src = nextUrl;
-        audio.onended = () => setSpeaking(false);
-        audio.onerror = () => {
-          setSpeaking(false);
-          setTtsError('Speech audio was generated, but playback failed.');
-        };
-        await audio.play().catch(() => {
-          setTtsError('Speech audio was generated. Press play in the audio control below.');
-        });
-      }
-    } catch (error) {
-      setTtsError(error instanceof Error ? error.message : 'Speech synthesis failed.');
-      setSpeaking(false);
+    const synth = window.speechSynthesis;
+    if (!synth) {
+      setTtsError('Speech synthesis is not available in this browser.');
+      return;
     }
+
+    setTtsError('');
+    synth.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voice = voices.find((v) => v.name === selectedVoiceName);
+    if (voice) utterance.voice = voice;
+
+    utterance.onstart = () => setSpeaking(true);
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => {
+      setTtsError('Speech synthesis failed.');
+      setSpeaking(false);
+    };
+
+    synth.speak(utterance);
   };
 
   const stopSpeaking = () => {
-    const audio = audioRef.current;
-    if (audio) {
-      audio.pause();
-      audio.currentTime = 0;
-    }
+    window.speechSynthesis?.cancel();
     setSpeaking(false);
   };
 
   const speechStatus = recording
     ? 'Listening\u2026'
-    : analyzing
-      ? 'Transcribing'
-      : speechSupported
-        ? 'Ready'
-        : 'Microphone unavailable';
+    : sttSupported
+      ? 'Ready'
+      : 'Speech recognition unavailable';
 
   return (
-    <ScreenShell eyebrow="Caption &middot; color &middot; speak" title="Speech">
+    <ScreenShell title="Speech">
       <section className={`${CARD} p-4`}>
         <div className="flex items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-bold tracking-tight">Speech to text</h3>
             <p className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-mist">
-              <span className={`h-1.5 w-1.5 rounded-full ${recording ? 'bg-danger animate-pulse' : analyzing ? 'bg-primary animate-pulse' : 'bg-emerald-400'}`} />
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  recording ? 'bg-danger animate-pulse' : 'bg-emerald-400'
+                }`}
+              />
               {speechStatus}
             </p>
           </div>
           <button
             onClick={recording ? stopRecording : startRecording}
-            disabled={!speechSupported || analyzing}
+            disabled={!sttSupported}
             className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl transition active:scale-95 ${
               recording
                 ? 'bg-danger text-white'
-                : speechSupported && !analyzing
+                : sttSupported
                   ? 'bg-primary text-white'
                   : 'bg-paper-2 text-faint'
             }`}
@@ -491,15 +407,19 @@ function SpeechScreen() {
           <div className="mt-3 flex items-center gap-3 rounded-lg border border-red-400/20 bg-red-400/5 px-4 py-3 text-white/80">
             <span className="flex items-end gap-0.5" aria-hidden="true">
               {[0, 1, 2, 3].map((bar) => (
-                <span key={bar} className="audio-bar w-1 rounded-full bg-red-300" style={{ animationDelay: `${bar * 0.12}s` }} />
+                <span
+                  key={bar}
+                  className="audio-bar w-1 rounded-full bg-red-300"
+                  style={{ animationDelay: `${bar * 0.12}s` }}
+                />
               ))}
             </span>
-            <p className="text-sm leading-relaxed">Tap the mic again to analyze this segment.</p>
+            <p className="text-sm leading-relaxed">Tap the mic again to stop.</p>
           </div>
         )}
 
         <div className="mt-4 space-y-2">
-          {lines.length === 0 ? (
+          {lines.length === 0 && !interimText ? (
             <div className="rounded-lg border border-dashed border-line bg-paper-2 px-4 py-6 text-center text-sm text-faint">
               Captions will appear here
             </div>
@@ -511,7 +431,10 @@ function SpeechScreen() {
                 style={{ borderLeft: `3px solid ${EMOTION_COLORS[line.emotion]}` }}
               >
                 <div className="mb-1 flex items-center justify-between gap-3">
-                  <span className="font-mono text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: EMOTION_COLORS[line.emotion] }}>
+                  <span
+                    className="font-mono text-[10px] font-bold uppercase tracking-[0.12em]"
+                    style={{ color: EMOTION_COLORS[line.emotion] }}
+                  >
                     {line.emotion}
                   </span>
                   <span className="shrink-0 font-mono text-[10px] text-faint">
@@ -521,6 +444,14 @@ function SpeechScreen() {
                 <p className="text-sm leading-relaxed">{line.text}</p>
               </div>
             ))
+          )}
+          {interimText && (
+            <div className="rounded-lg border border-primary/20 bg-primary/5 pl-3 pr-3 py-2.5">
+              <p className="text-sm leading-relaxed text-ink/60">
+                {interimText}
+                <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-primary" />
+              </p>
+            </div>
           )}
         </div>
 
@@ -561,14 +492,18 @@ function SpeechScreen() {
 
         <div className="mt-3 flex gap-2">
           <label className="relative min-w-0 flex-1">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-faint">Voice</span>
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-faint">
+              Voice
+            </span>
             <select
-              value={ttsVoice}
-              onChange={(event) => setTtsVoice(event.target.value)}
+              value={selectedVoiceName}
+              onChange={(event) => setSelectedVoiceName(event.target.value)}
               className="w-full rounded-lg border border-line bg-paper-2 py-2.5 pl-12 pr-3 text-sm text-ink outline-none focus:border-primary"
             >
-              {GEMINI_TTS_VOICES.map((voice) => (
-                <option key={voice} value={voice}>{voice}</option>
+              {voices.map((voice) => (
+                <option key={voice.name} value={voice.name}>
+                  {voice.name}
+                </option>
               ))}
             </select>
           </label>
@@ -587,14 +522,6 @@ function SpeechScreen() {
             {speaking ? <Square size={15} fill="currentColor" /> : <Send size={16} />}
           </button>
         </div>
-
-        <audio
-          ref={audioRef}
-          controls={Boolean(ttsAudioUrl)}
-          className={`mt-3 w-full ${ttsAudioUrl ? 'block' : 'hidden'}`}
-          onPause={() => setSpeaking(false)}
-          onPlay={() => setSpeaking(true)}
-        />
       </section>
     </ScreenShell>
   );
@@ -602,10 +529,7 @@ function SpeechScreen() {
 
 function RecentSoundsScreen({ events, onClear }: { events: SoundEvent[]; onClear: () => void }) {
   return (
-    <ScreenShell
-      eyebrow="Timestamped log"
-      title="Recent"
-    >
+    <ScreenShell title="Recent">
       {events.length === 0 ? (
         <div className="rounded-lg border border-dashed border-line bg-paper-2 px-5 py-8 text-center">
           <p className="text-base font-bold tracking-tight">No sounds yet</p>
@@ -665,7 +589,7 @@ function SettingsScreen({
   onInstall: () => void;
 }) {
   return (
-    <ScreenShell eyebrow="Sensitivity &middot; alerts &middot; haptics" title="Settings">
+    <ScreenShell title="Settings">
       <section className={`${CARD} p-4`}>
         <h3 className="mb-3 text-sm font-bold tracking-tight">Alert types</h3>
         <div className="grid grid-cols-2 gap-2">
