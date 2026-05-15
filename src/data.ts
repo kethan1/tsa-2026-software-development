@@ -82,10 +82,10 @@ export const CATEGORY_ORDER: SenseSyncCategory[] = [
    WCAG AA for graphical objects + bold text.
    =========================================================================== */
 export const urgencyColor: Record<AlertPriority, string> = {
-  emergency: '#ff5247', // red-orange
-  high: '#ffb000', // amber
-  normal: '#4da3ff', // blue
-  low: '#9aa8be', // slate
+  emergency: '#ef4444',
+  high: '#6366f1',
+  normal: '#6366f1',
+  low: '#a3a3a3',
 };
 
 export const urgencyLabel: Record<AlertPriority, string> = {
@@ -172,57 +172,4 @@ export const defaultSettings: UserSettings = {
   largeText: false,
 };
 
-let seedId = 0;
-const mkEvent = (
-  category: SenseSyncCategory,
-  directionDeg: number,
-  loudness: number,
-  secondsAgo: number,
-  extra: Partial<SoundEvent> = {}
-): SoundEvent => ({
-  id: `seed-${seedId++}`,
-  category,
-  rawLabel: categoryMetadata[category].displayName,
-  icon: categoryMetadata[category].icon,
-  urgency: urgencyFor(category, directionDeg),
-  confidence: 0.78 + Math.random() * 0.2,
-  loudness,
-  directionDeg,
-  timestamp: new Date(Date.now() - secondsAgo * 1000),
-  source: 'demo',
-  ...extra,
-});
 
-/** A pre-populated recent-sounds feed so the Log screen reads as a real product. */
-export function sampleLog(): SoundEvent[] {
-  return [
-    mkEvent('vehicle', 168, 0.9, 14, { rawLabel: 'Car approaching from behind' }),
-    mkEvent('name', 305, 0.6, 47, { rawLabel: 'Name called', speaker: 'Across the room' }),
-    mkEvent('doorbell', 5, 0.75, 92, {}),
-    mkEvent('speech', 52, 0.45, 140, { transcript: '“…are you coming with us?”' }),
-    mkEvent('siren', 240, 0.95, 360, { rawLabel: 'Ambulance siren' }),
-    mkEvent('glass', 120, 0.8, 520, {}),
-    mkEvent('speech', 18, 0.4, 690, {}),
-  ];
-}
-
-/** Scripted demo fired after the AR "Start" countdown — ends on a critical event. */
-export interface DemoStep {
-  category: SenseSyncCategory;
-  directionDeg: number;
-  loudness: number;
-  afterMs: number;
-  rawLabel?: string;
-}
-export const demoSequence: DemoStep[] = [
-  { category: 'speech', directionDeg: 40, loudness: 0.45, afterMs: 900 },
-  { category: 'doorbell', directionDeg: 0, loudness: 0.72, afterMs: 3000 },
-  { category: 'name', directionDeg: 300, loudness: 0.58, afterMs: 5200 },
-  {
-    category: 'vehicle',
-    directionDeg: 165,
-    loudness: 0.92,
-    afterMs: 7600,
-    rawLabel: 'Car approaching from behind',
-  }, // rear -> escalates to CRITICAL, triggers the radar-page popup
-];

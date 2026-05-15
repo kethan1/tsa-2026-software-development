@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
-  Download,
   History,
   List,
   MessageSquareText,
@@ -10,7 +9,6 @@ import {
   Radio,
   Send,
   Settings,
-  SlidersHorizontal,
   Square,
   Trash2,
   Volume2,
@@ -24,23 +22,21 @@ import {
   categoryMetadata,
   defaultSettings,
   resolveEvent,
-  sampleLog,
 } from './data';
 import ARView from './components/ARView';
-import { SoundBadge, UrgencyTag } from './components/SoundBadge';
+import { SoundBadge } from './components/SoundBadge';
 import { useInstallPrompt } from './pwa';
 
-// One shared dark surface so every screen reads as the same product.
-const CARD = 'rounded-2xl border border-white/10 bg-white/[0.05] shadow-[0_18px_60px_rgba(0,0,0,0.32)]';
+const CARD = 'rounded-xl border border-[var(--color-line)] bg-[var(--color-paper)]';
 const HISTORY_LIMIT = 40;
 
 type ScreenId = 'main' | 'speech' | 'log' | 'settings';
 
-const SCREENS: { id: ScreenId; label: string; title: string; icon: React.ComponentType<{ size?: number }> }[] = [
-  { id: 'main', label: 'Surround', title: 'Surround Sound', icon: Radio },
-  { id: 'speech', label: 'Speech', title: 'Speech tools', icon: MessageSquareText },
-  { id: 'log', label: 'Recent', title: 'Recent sounds', icon: List },
-  { id: 'settings', label: 'Settings', title: 'Settings', icon: Settings },
+const SCREENS: { id: ScreenId; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
+  { id: 'main', label: 'Surround', icon: Radio },
+  { id: 'speech', label: 'Speech', icon: MessageSquareText },
+  { id: 'log', label: 'Recent', icon: List },
+  { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
 const CARDINALS = ['Front', 'Front right', 'Right', 'Behind right', 'Behind', 'Behind left', 'Left', 'Front left'];
@@ -50,18 +46,6 @@ const timeAgo = (date: Date) => {
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.round(seconds / 60);
   return `${minutes}m ago`;
-};
-
-type GeminiAnalyzeAudioResponse = {
-  isSpeech?: boolean;
-  label?: string;
-  icon?: string;
-  urgency?: string;
-  confidence?: number;
-  description?: string;
-  transcript?: string;
-  speaker?: string;
-  emotion?: string;
 };
 
 type EmotionId = 'angry' | 'urgent' | 'happy' | 'sad' | 'calm' | 'neutral';
@@ -74,37 +58,13 @@ type SpeechLine = {
   timestamp: Date;
 };
 
-const EMOTION_META: Record<EmotionId, { label: string; classes: string; dot: string }> = {
-  angry: {
-    label: 'Angry',
-    classes: 'border-red-500/30 bg-red-500/12 text-red-100',
-    dot: 'bg-red-400',
-  },
-  urgent: {
-    label: 'Urgent',
-    classes: 'border-amber-400/35 bg-amber-400/12 text-amber-50',
-    dot: 'bg-amber-300',
-  },
-  happy: {
-    label: 'Happy',
-    classes: 'border-emerald-400/35 bg-emerald-400/12 text-emerald-50',
-    dot: 'bg-emerald-300',
-  },
-  sad: {
-    label: 'Sad',
-    classes: 'border-sky-400/35 bg-sky-400/12 text-sky-50',
-    dot: 'bg-sky-300',
-  },
-  calm: {
-    label: 'Calm',
-    classes: 'border-teal-300/35 bg-teal-300/12 text-teal-50',
-    dot: 'bg-teal-200',
-  },
-  neutral: {
-    label: 'Neutral',
-    classes: 'border-white/12 bg-white/8 text-white',
-    dot: 'bg-white/50',
-  },
+const EMOTION_COLORS: Record<EmotionId, string> = {
+  angry: '#ef4444',
+  urgent: '#f59e0b',
+  happy: '#22c55e',
+  sad: '#3b82f6',
+  calm: '#14b8a6',
+  neutral: '#a3a3a3',
 };
 
 const detectEmotion = (value: string): EmotionId => {
@@ -158,10 +118,8 @@ const base64ToBlob = (base64: string, mimeType: string) => {
 
 export default function App() {
   const [screen, setScreen] = useState<ScreenId>('main');
-  // Live events currently on the radar (drive the critical popup on Surround).
   const [liveEvents, setLiveEvents] = useState<SoundEvent[]>([]);
-  // Persistent, accumulating feed shown on the Recent screen.
-  const [history, setHistory] = useState<SoundEvent[]>(() => sampleLog());
+  const [history, setHistory] = useState<SoundEvent[]>([]);
   const [settings, setSettings] = useState<UserSettings>(defaultSettings);
   const [dismissedAlertId, setDismissedAlertId] = useState<string | null>(null);
   const { canInstall, installed, promptInstall } = useInstallPrompt();
@@ -174,15 +132,14 @@ export default function App() {
     setLiveEvents(nextEvents);
   };
 
-  // Every fresh detection on Surround flows straight into the Recent log.
   const handleEventDetected = (event: SoundEvent) => {
     setHistory((prev) => [event, ...prev].slice(0, HISTORY_LIMIT));
   };
 
   return (
-    <div className="min-h-dvh bg-black text-white">
-      <div className="mx-auto flex min-h-dvh max-w-md flex-col overflow-hidden bg-[#06090c] text-white shadow-2xl sm:my-5 sm:min-h-[calc(100dvh-2.5rem)] sm:rounded-[2rem] sm:border sm:border-white/10">
-        <main className="relative flex-1 overflow-hidden">
+    <div className="h-dvh bg-[var(--color-canvas)] text-[var(--color-ink)]">
+      <div className="mx-auto flex h-full max-w-md flex-col bg-[var(--color-canvas)] sm:my-5 sm:h-[calc(100dvh-2.5rem)] sm:rounded-[2rem] sm:border sm:border-[var(--color-line)]">
+        <main className="relative flex-1 min-h-0">
           <Screen active={screen === 'main'}>
             <ARView onEventsChange={handleRadarEventsChange} onEventDetected={handleEventDetected} />
             {showCriticalPopup && critical && (
@@ -209,20 +166,17 @@ export default function App() {
           </Screen>
         </main>
 
-        <nav
-          className="z-30 grid shrink-0 grid-cols-4 gap-1 border-t border-white/10 bg-[#070d12]/95 px-3 pt-2 backdrop-blur-xl"
-          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.5rem)' }}
-        >
+        <nav className="z-30 grid shrink-0 grid-cols-4 border-t border-[var(--color-line)] bg-[var(--color-paper)]">
           {SCREENS.map(({ id, label, icon: Icon }) => {
             const active = screen === id;
             return (
               <button
                 key={id}
                 onClick={() => setScreen(id)}
-                className={`flex flex-col items-center gap-1 rounded-xl px-2 py-2 font-mono text-[10px] font-bold uppercase tracking-wide transition ${
+                className={`flex flex-col items-center gap-1 py-3 text-xs font-medium transition ${
                   active
-                    ? 'bg-cyan-300 text-[#061015] shadow-[0_0_22px_rgba(103,232,249,0.30)]'
-                    : 'text-white/50 hover:bg-white/10 hover:text-white'
+                    ? 'text-[var(--color-primary)]'
+                    : 'text-[var(--color-faint)] hover:text-[var(--color-mist)]'
                 }`}
               >
                 <Icon size={18} />
@@ -236,39 +190,26 @@ export default function App() {
   );
 }
 
-/** Shared header so Speech / Recent / Settings open identically. */
 function ScreenShell({
   eyebrow,
   title,
-  icon: Icon,
-  action,
   children,
 }: {
   eyebrow: string;
   title: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <div className="h-full overflow-y-auto bg-[#06090c] text-white">
+    <div className="h-full overflow-y-auto bg-[var(--color-canvas)] text-[var(--color-ink)]">
       <div
-        className="px-5 pb-10"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.35rem)' }}
+        className="px-4 pb-6"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
       >
-        <header className="mb-5 flex items-end justify-between gap-3 border-b border-white/10 pb-4">
-          <div className="min-w-0">
-            <p className="font-mono text-[10px] font-black uppercase tracking-[0.26em] text-cyan-300/70">
-              {eyebrow}
-            </p>
-            <h2 className="mt-1.5 font-display text-[2rem] font-black leading-none tracking-tight">{title}</h2>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {action}
-            <span className="grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-white/6 text-cyan-200/90">
-              <Icon size={20} />
-            </span>
-          </div>
+        <header className="mb-5 border-b border-[var(--color-line)] pb-3">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--color-mist)]">
+            {eyebrow}
+          </p>
+          <h2 className="mt-0.5 text-xl font-bold tracking-tight">{title}</h2>
         </header>
         {children}
       </div>
@@ -281,36 +222,34 @@ function CriticalAlertPopup({ event, onDismiss }: { event: SoundEvent; onDismiss
   return (
     <div
       className="pointer-events-none absolute inset-x-3 z-40 flex justify-center"
-      style={{ top: 'calc(env(safe-area-inset-top) + 4.25rem)' }}
+      style={{ top: 'calc(env(safe-area-inset-top) + 4rem)' }}
     >
-      <section className="pointer-events-auto w-full max-w-sm animate-fade-in rounded-3xl border border-red-300/35 bg-[#1d0b0d]/94 p-4 text-white shadow-[0_24px_80px_rgba(0,0,0,0.65)] backdrop-blur-xl">
+      <section className="pointer-events-auto w-full max-w-sm animate-fade-in rounded-xl border border-[var(--color-danger)]/40 bg-[var(--color-paper)] p-4">
         <div className="flex items-center gap-3">
-          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-red-300/45 bg-red-500/18 text-red-200">
-            <AlertTriangle size={27} />
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 text-[var(--color-danger)]">
+            <AlertTriangle size={20} />
           </div>
           <div className="min-w-0">
-            <p className="font-mono text-[10px] font-black uppercase tracking-[0.26em] text-red-200">
-              Critical sound detected
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--color-danger)]">
+              Critical sound
             </p>
-            <h2 className="mt-1 truncate font-display text-xl font-black tracking-normal text-white">
-              {resolved.shortName}
-            </h2>
+            <h2 className="mt-0.5 truncate text-base font-bold">{resolved.shortName}</h2>
           </div>
         </div>
-        <div className="mt-3 rounded-2xl border border-white/12 bg-white/7 px-4 py-3">
-          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-white/50">Direction</p>
-          <p className="mt-1 font-display text-lg font-bold text-white">
-            {directionLabel(event.directionDeg)} · {event.directionDeg}°
+        <div className="mt-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-paper-2)] px-3 py-2.5">
+          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--color-faint)]">Direction</p>
+          <p className="mt-0.5 text-base font-semibold">
+            {directionLabel(event.directionDeg)} &middot; {event.directionDeg}&deg;
           </p>
-          <p className="mt-2 font-mono text-[11px] text-white/60">
-            {Math.round(event.confidence * 100)}% confidence · {Math.round(event.loudness * 100)} dB scale
+          <p className="mt-1 font-mono text-[11px] text-[var(--color-mist)]">
+            {Math.round(event.confidence * 100)}% &middot; {Math.round(event.loudness * 100)} dB
           </p>
         </div>
         <button
           onClick={onDismiss}
-          className="mt-3 w-full rounded-2xl bg-red-400 px-5 py-2.5 font-display text-sm font-bold text-[#160609] transition active:scale-[0.98]"
+          className="mt-3 w-full rounded-lg bg-[var(--color-danger)] px-4 py-2 text-sm font-bold text-white transition active:scale-[0.98]"
         >
-          Got it - dismiss
+          Dismiss
         </button>
       </section>
     </div>
@@ -324,7 +263,6 @@ function SpeechScreen() {
   const audioChunksRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef('');
-  // Demo script: counts how many times speech-to-text has run this session.
   const speechRunCountRef = useRef(0);
   const [speechSupported, setSpeechSupported] = useState(true);
   const [recording, setRecording] = useState(false);
@@ -347,8 +285,6 @@ function SpeechScreen() {
     };
   }, []);
 
-  // Hard-coded demo script: the first run returns a happy line, the second an
-  // angry line, and every run after that reports the device as overheating.
   const analyzeRecording = async (_blob: Blob) => {
     const run = speechRunCountRef.current + 1;
     speechRunCountRef.current = run;
@@ -361,7 +297,6 @@ function SpeechScreen() {
     }
 
     setAnalyzing(true);
-    // Brief pause so the analysis still feels live during the demo.
     await new Promise((resolve) => setTimeout(resolve, 900));
 
     const scripted =
@@ -482,7 +417,7 @@ function SpeechScreen() {
   };
 
   const speechStatus = recording
-    ? 'Listening…'
+    ? 'Listening\u2026'
     : analyzing
       ? 'Transcribing'
       : speechSupported
@@ -490,91 +425,82 @@ function SpeechScreen() {
         : 'Microphone unavailable';
 
   return (
-    <ScreenShell eyebrow="Caption · color · speak" title="Speech" icon={MessageSquareText}>
+    <ScreenShell eyebrow="Caption &middot; color &middot; speak" title="Speech">
       <section className={`${CARD} p-4`}>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h3 className="font-display text-lg font-bold tracking-tight">Speech to text</h3>
-            <p className="mt-1 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">
-              <span className={`h-1.5 w-1.5 rounded-full ${recording ? 'bg-red-400 animate-pulse' : analyzing ? 'bg-cyan-300 animate-pulse' : 'bg-emerald-400'}`} />
+            <h3 className="text-base font-bold tracking-tight">Speech to text</h3>
+            <p className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-mist)]">
+              <span className={`h-1.5 w-1.5 rounded-full ${recording ? 'bg-[var(--color-danger)] animate-pulse' : analyzing ? 'bg-[var(--color-primary)] animate-pulse' : 'bg-emerald-400'}`} />
               {speechStatus}
             </p>
           </div>
           <button
             onClick={recording ? stopRecording : startRecording}
             disabled={!speechSupported || analyzing}
-            className={`grid h-14 w-14 shrink-0 place-items-center rounded-full transition active:scale-95 ${
+            className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl transition active:scale-95 ${
               recording
-                ? 'bg-red-500 text-white shadow-[0_0_34px_rgba(239,68,68,0.5)]'
+                ? 'bg-[var(--color-danger)] text-white'
                 : speechSupported && !analyzing
-                  ? 'bg-cyan-300 text-[#061015] shadow-[0_0_34px_rgba(103,232,249,0.32)]'
-                  : 'bg-white/10 text-white/30'
+                  ? 'bg-[var(--color-primary)] text-white'
+                  : 'bg-[var(--color-paper-2)] text-[var(--color-faint)]'
             }`}
-            aria-label={recording ? 'Stop recording speech' : 'Record speech for analysis'}
+            aria-label={recording ? 'Stop recording' : 'Record speech'}
           >
-            {recording ? <MicOff size={24} /> : <Mic size={24} />}
+            {recording ? <MicOff size={20} /> : <Mic size={20} />}
           </button>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-1.5">
-          {(Object.keys(EMOTION_META) as EmotionId[]).map((emotion) => (
-            <span key={emotion} className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/24 px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-white/70">
-              <span className={`h-2 w-2 rounded-full ${EMOTION_META[emotion].dot}`} />
-              {EMOTION_META[emotion].label}
-            </span>
-          ))}
-        </div>
-
         {speechError && (
-          <p className="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs leading-relaxed text-amber-100">
+          <p className="mt-3 rounded-lg border border-amber-400/20 bg-amber-400/8 px-3 py-2 text-xs leading-relaxed text-amber-100">
             {speechError}
           </p>
         )}
 
         {recording && (
-          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-red-300/20 bg-red-500/10 px-4 py-3 text-white/80">
+          <div className="mt-3 flex items-center gap-3 rounded-lg border border-red-400/20 bg-red-400/5 px-4 py-3 text-white/80">
             <span className="flex items-end gap-0.5" aria-hidden="true">
               {[0, 1, 2, 3].map((bar) => (
                 <span key={bar} className="audio-bar w-1 rounded-full bg-red-300" style={{ animationDelay: `${bar * 0.12}s` }} />
               ))}
             </span>
-            <p className="text-sm leading-relaxed">Tap the mic again analyze this audio segment.</p>
+            <p className="text-sm leading-relaxed">Tap the mic again to analyze this segment.</p>
           </div>
         )}
 
-        <div className="mt-4 space-y-2.5">
+        <div className="mt-4 space-y-2">
           {lines.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-white/14 bg-black/18 px-4 py-7 text-center text-sm text-white/45">
+            <div className="rounded-lg border border-dashed border-[var(--color-line)] bg-[var(--color-paper-2)] px-4 py-6 text-center text-sm text-[var(--color-faint)]">
               Captions will appear here
             </div>
           ) : (
-            lines.map((line) => {
-              const meta = EMOTION_META[line.emotion];
-              return (
-                <article key={line.id} className={`rounded-2xl border px-4 py-3 ${meta.classes}`}>
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-black uppercase tracking-[0.14em]">
-                      <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
-                      {meta.label}
-                    </span>
-                    <span className="shrink-0 font-mono text-[10px] text-white/45">
-                      {line.confidence == null ? timeAgo(line.timestamp) : `${Math.round(line.confidence * 100)}%`}
-                    </span>
-                  </div>
-                  <p className="text-base leading-relaxed text-white">{line.text}</p>
-                </article>
-              );
-            })
+            lines.map((line) => (
+              <div
+                key={line.id}
+                className="rounded-lg border border-[var(--color-line)] bg-[var(--color-paper-2)] pl-3 pr-3 py-2.5"
+                style={{ borderLeft: `3px solid ${EMOTION_COLORS[line.emotion]}` }}
+              >
+                <div className="mb-1 flex items-center justify-between gap-3">
+                  <span className="font-mono text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: EMOTION_COLORS[line.emotion] }}>
+                    {line.emotion}
+                  </span>
+                  <span className="shrink-0 font-mono text-[10px] text-[var(--color-faint)]">
+                    {line.confidence == null ? timeAgo(line.timestamp) : `${Math.round(line.confidence * 100)}%`}
+                  </span>
+                </div>
+                <p className="text-sm leading-relaxed">{line.text}</p>
+              </div>
+            ))
           )}
         </div>
 
         {lines.length > 0 && (
           <button
             onClick={() => setLines([])}
-            className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/8 px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-white/70 transition hover:bg-white/12"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-paper-2)] px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--color-faint)] transition hover:text-[var(--color-ink)]"
           >
-            <Trash2 size={14} />
-            Clear captions
+            <Trash2 size={13} />
+            Clear
           </button>
         )}
       </section>
@@ -582,16 +508,15 @@ function SpeechScreen() {
       <section className={`mt-4 ${CARD} p-4`}>
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
-            <h3 className="font-display text-lg font-bold tracking-tight">Text to speech</h3>
-            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">
-              {speaking ? 'Playing audio' : 'Voice output'}
+            <h3 className="text-base font-bold tracking-tight">Text to speech</h3>
+            <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-mist)]">
+              {speaking ? 'Playing' : 'Voice output'}
             </p>
           </div>
-          <Volume2 size={22} className="text-cyan-200/90" />
         </div>
 
         {ttsError && (
-          <p className="mb-3 rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs leading-relaxed text-amber-100">
+          <p className="mb-3 rounded-lg border border-amber-400/20 bg-amber-400/8 px-3 py-2 text-xs leading-relaxed text-amber-100">
             {ttsError}
           </p>
         )}
@@ -600,17 +525,17 @@ function SpeechScreen() {
           value={speakText}
           onChange={(event) => setSpeakText(event.target.value)}
           rows={4}
-          className="w-full resize-none rounded-2xl border border-white/10 bg-black/28 px-4 py-3 text-sm leading-relaxed text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/50"
+          className="w-full resize-none rounded-lg border border-[var(--color-line)] bg-[var(--color-canvas)] px-3 py-2.5 text-sm leading-relaxed text-[var(--color-ink)] outline-none transition placeholder:text-[var(--color-faint)] focus:border-[var(--color-primary)]"
           placeholder="Type what you want spoken aloud"
         />
 
         <div className="mt-3 flex gap-2">
           <label className="relative min-w-0 flex-1">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-white/35">Voice</span>
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--color-faint)]">Voice</span>
             <select
               value={ttsVoice}
               onChange={(event) => setTtsVoice(event.target.value)}
-              className="w-full rounded-2xl border border-white/10 bg-black/35 py-2.5 pl-14 pr-3 text-sm text-white outline-none focus:border-cyan-300/50"
+              className="w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-paper-2)] py-2.5 pl-12 pr-3 text-sm text-[var(--color-ink)] outline-none focus:border-[var(--color-primary)]"
             >
               {GEMINI_TTS_VOICES.map((voice) => (
                 <option key={voice} value={voice}>{voice}</option>
@@ -620,16 +545,16 @@ function SpeechScreen() {
           <button
             onClick={speaking ? stopSpeaking : speak}
             disabled={!speakText.trim()}
-            className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl transition active:scale-95 ${
+            className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg transition active:scale-95 ${
               speaking
-                ? 'bg-red-500 text-white'
+                ? 'bg-[var(--color-danger)] text-white'
                 : speakText.trim()
-                  ? 'bg-cyan-300 text-[#061015] shadow-[0_0_26px_rgba(103,232,249,0.28)]'
-                  : 'bg-white/10 text-white/30'
+                  ? 'bg-[var(--color-primary)] text-white'
+                  : 'bg-[var(--color-paper-2)] text-[var(--color-faint)]'
             }`}
             aria-label={speaking ? 'Stop speaking' : 'Speak text'}
           >
-            {speaking ? <Square size={17} fill="currentColor" /> : <Send size={18} />}
+            {speaking ? <Square size={15} fill="currentColor" /> : <Send size={16} />}
           </button>
         </div>
 
@@ -646,74 +571,50 @@ function SpeechScreen() {
 }
 
 function RecentSoundsScreen({ events, onClear }: { events: SoundEvent[]; onClear: () => void }) {
-  const criticalCount = events.filter((event) => resolveEvent(event).isCritical).length;
-
   return (
     <ScreenShell
       eyebrow="Timestamped log"
       title="Recent"
-      icon={History}
-      action={
-        events.length > 0 ? (
-          <button
-            onClick={onClear}
-            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-white/65 transition hover:bg-white/12 hover:text-white"
-          >
-            <Trash2 size={13} />
-            Clear
-          </button>
-        ) : undefined
-      }
     >
-      <div className="mb-4 grid grid-cols-2 gap-2.5">
-        <div className={`${CARD} p-3.5`}>
-          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white/45">Detected</p>
-          <p className="mt-1 font-display text-2xl font-black">{events.length}</p>
-        </div>
-        <div className={`${CARD} p-3.5`}>
-          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white/45">Critical</p>
-          <p className={`mt-1 font-display text-2xl font-black ${criticalCount > 0 ? 'text-[#ff5247]' : 'text-white'}`}>
-            {criticalCount}
-          </p>
-        </div>
-      </div>
-
       {events.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-white/14 bg-white/[0.03] px-5 py-10 text-center">
-          <p className="font-display text-lg font-bold tracking-tight">No sounds yet</p>
-          <p className="mt-2 text-sm leading-relaxed text-white/45">
-            Detections from Surround Sound land here automatically.
+        <div className="rounded-lg border border-dashed border-[var(--color-line)] bg-[var(--color-paper-2)] px-5 py-8 text-center">
+          <p className="text-base font-bold tracking-tight">No sounds yet</p>
+          <p className="mt-1 text-sm leading-relaxed text-[var(--color-mist)]">
+            Detections from Surround Sound appear here.
           </p>
         </div>
       ) : (
-        <div className="space-y-2.5">
+        <div className="space-y-2">
           {events.map((event) => {
             const resolved = resolveEvent(event);
             return (
               <article
                 key={event.id}
-                className={`flex items-center gap-3 rounded-2xl border p-3 ${
-                  resolved.isCritical ? 'border-[#ff5247]/35 bg-[#ff5247]/[0.07]' : 'border-white/10 bg-white/[0.05]'
+                className={`flex items-center gap-3 rounded-lg border p-3 ${
+                  resolved.isCritical ? 'border-[var(--color-danger)]/30 bg-[var(--color-danger)]/5' : 'border-[var(--color-line)] bg-[var(--color-paper)]'
                 }`}
               >
-                <SoundBadge resolved={resolved} size={44} />
+                <SoundBadge resolved={resolved} size={36} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="truncate font-display text-base font-bold tracking-tight">{resolved.name}</h3>
-                    <span className="shrink-0 font-mono text-[10px] font-bold uppercase text-white/40">
+                    <h3 className="truncate text-sm font-bold tracking-tight">{resolved.shortName}</h3>
+                    <span className="shrink-0 font-mono text-[10px] text-[var(--color-faint)]">
                       {timeAgo(event.timestamp)}
                     </span>
                   </div>
-                  <div className="mt-1.5 flex items-center justify-between gap-3">
-                    <p className="truncate font-mono text-[11px] uppercase tracking-[0.1em] text-white/45">
-                      {directionLabel(event.directionDeg)} · {event.directionDeg}° · {Math.round(event.confidence * 100)}%
-                    </p>
-                    <UrgencyTag resolved={resolved} />
-                  </div>
+                  <p className="mt-0.5 truncate font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--color-mist)]">
+                    {directionLabel(event.directionDeg)} &middot; {event.directionDeg}&deg; &middot; {Math.round(event.confidence * 100)}%
+                  </p>
                 </div>
               </article>
             );
           })}
+          <button
+            onClick={onClear}
+            className="mt-2 w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-paper-2)] py-2 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--color-faint)] transition hover:text-[var(--color-ink)]"
+          >
+            Clear all
+          </button>
         </div>
       )}
     </ScreenShell>
@@ -734,12 +635,9 @@ function SettingsScreen({
   onInstall: () => void;
 }) {
   return (
-    <ScreenShell eyebrow="Sensitivity · alerts · haptics" title="Settings" icon={Settings}>
-      <section className={`mt-4 ${CARD} p-4`}>
-        <div className="mb-3 flex items-center gap-2.5">
-          <Volume2 size={18} className="text-cyan-200/90" />
-          <h3 className="font-display text-lg font-bold tracking-tight">Alert types</h3>
-        </div>
+    <ScreenShell eyebrow="Sensitivity &middot; alerts &middot; haptics" title="Settings">
+      <section className={`${CARD} p-4`}>
+        <h3 className="mb-3 text-sm font-bold tracking-tight">Alert types</h3>
         <div className="grid grid-cols-2 gap-2">
           {CATEGORY_ORDER.map((category) => {
             const enabled = settings.alertOn[category];
@@ -752,16 +650,16 @@ function SettingsScreen({
                     alertOn: { ...prev.alertOn, [category]: !prev.alertOn[category] },
                   }))
                 }
-                className={`flex items-center gap-2 rounded-xl border px-3 py-3 text-left transition ${
+                className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition ${
                   enabled
-                    ? 'border-cyan-300/50 bg-cyan-300/12 text-white'
-                    : 'border-white/10 bg-white/[0.03] text-white/40'
+                    ? 'border-[var(--color-primary)]/50 text-[var(--color-ink)]'
+                    : 'border-[var(--color-line)] text-[var(--color-faint)]'
                 }`}
               >
-                <span className={`text-lg transition ${enabled ? '' : 'opacity-40 grayscale'}`}>
+                <span className={`text-base ${enabled ? '' : 'opacity-40 grayscale'}`}>
                   {categoryMetadata[category].icon}
                 </span>
-                <span className="font-mono text-[10px] font-black uppercase tracking-[0.1em]">
+                <span className="font-mono text-[10px] font-bold uppercase tracking-[0.08em]">
                   {categoryMetadata[category].shortName}
                 </span>
               </button>
@@ -770,48 +668,45 @@ function SettingsScreen({
         </div>
       </section>
 
-      <section className={`mt-4 ${CARD} p-4`}>
+      <section className={`${CARD} p-4`}>
         <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <Watch size={18} className="text-cyan-200/90" />
-            <h3 className="font-display text-lg font-bold tracking-tight">Haptics</h3>
-          </div>
+          <h3 className="text-sm font-bold tracking-tight">Haptics</h3>
           <button
             onClick={() => onSettingsChange((prev) => ({ ...prev, haptics: !prev.haptics }))}
-            className={`h-7 w-12 rounded-full p-1 transition ${settings.haptics ? 'bg-cyan-300' : 'bg-white/15'}`}
+            className={`h-6 w-10 rounded-full p-0.5 transition ${settings.haptics ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-paper-2)]'}`}
             aria-label="Toggle haptics"
             aria-pressed={settings.haptics}
           >
             <span
-              className={`block h-5 w-5 rounded-full bg-white shadow transition ${settings.haptics ? 'translate-x-5' : ''}`}
+              className={`block h-5 w-5 rounded-full bg-white transition ${settings.haptics ? 'translate-x-4' : ''}`}
             />
           </button>
         </div>
-        <div className={`space-y-1.5 transition ${settings.haptics ? '' : 'pointer-events-none opacity-40'}`}>
+        <div className={`space-y-1 transition ${settings.haptics ? '' : 'pointer-events-none opacity-40'}`}>
           {CATEGORY_ORDER.slice(0, 4).map((category) => (
             <div
               key={category}
-              className="flex items-center justify-between rounded-xl border border-white/8 bg-black/20 px-3 py-2"
+              className="flex items-center justify-between rounded-lg border border-[var(--color-line)] bg-[var(--color-paper-2)] px-3 py-2"
             >
-              <span className="flex items-center gap-2 font-mono text-[10px] font-black uppercase tracking-[0.1em]">
+              <span className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.08em]">
                 <span className="text-sm">{categoryMetadata[category].icon}</span>
                 {categoryMetadata[category].shortName}
               </span>
-              <span className="font-mono text-[10px] text-white/45">
-                {categoryHaptics[category]?.label || 'Default rhythm'}
+              <span className="font-mono text-[10px] text-[var(--color-faint)]">
+                {categoryHaptics[category]?.label || 'Default'}
               </span>
             </div>
           ))}
         </div>
       </section>
 
-      <p className="mt-5 text-center font-mono text-[10px] uppercase tracking-[0.18em] text-white/25">
-        SenseSync · Sound awareness for the Deaf &amp; HoH
+      <p className="mt-5 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--color-faint)]">
+        SenseSync &middot; Sound awareness for the Deaf &amp; HoH
       </p>
     </ScreenShell>
   );
 }
 
 function Screen({ active, children }: { active: boolean; children: React.ReactNode }) {
-  return <div className={active ? 'h-full' : 'hidden'}>{children}</div>;
+  return <div className={active ? 'absolute inset-0' : 'hidden'}>{children}</div>;
 }

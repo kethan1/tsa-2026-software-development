@@ -4,21 +4,12 @@ import { resolveEvent } from '../data';
 import { ringPoint, signedAngle } from '../geo';
 import { SoundBadge } from './SoundBadge';
 
-/* ===========================================================================
-   SoundRing — the circular "sound radar" HUD.
-
-   Egocentric: the top of the ring is straight ahead, clockwise to the right.
-   Each active sound gets a directional ARC on the ring's edge (its width +
-   thickness scale with loudness, its colour with urgency) and a floating
-   sound-type BADGE pinned to that bearing. The newest sound is emphasised.
-   =========================================================================== */
-
 interface SoundRingProps {
-  events: SoundEvent[]; // newest first
+  events: SoundEvent[];
   size: number;
-  heading?: number; // compass heading; 0 = facing ahead (desktop default)
-  jitter?: number; // live localisation noise in degrees, applied to bearings
-  max?: number; // how many sounds to plot
+  heading?: number;
+  jitter?: number;
+  max?: number;
   showLabels?: boolean;
   reduceMotion?: boolean;
 }
@@ -38,7 +29,6 @@ export default function SoundRing({
 
   const plotted = events.slice(0, max);
 
-  // Direction labels around the ring (ahead / right / behind / left).
   const cardinals: { deg: number; label: string }[] = [
     { deg: 0, label: 'AHEAD' },
     { deg: 90, label: 'RIGHT' },
@@ -56,18 +46,14 @@ export default function SoundRing({
         aria-hidden="true"
       >
         <defs>
-          <filter id="ring-glow" x="-60%" y="-60%" width="220%" height="220%">
-            <feGaussianBlur stdDeviation="4" />
-          </filter>
           <radialGradient id="ring-sweep-grad" cx="50%" cy="50%" r="50%">
-            <stop offset="55%" stopColor="#5b9bff" stopOpacity="0" />
-            <stop offset="100%" stopColor="#5b9bff" stopOpacity="0.18" />
+            <stop offset="55%" stopColor="#6366f1" stopOpacity="0" />
+            <stop offset="100%" stopColor="#6366f1" stopOpacity="0.12" />
           </radialGradient>
         </defs>
 
-        {/* rotating scan beam */}
         {!reduceMotion && (
-          <g opacity="0.85">
+          <g opacity="0.7">
             <path
               d={`M ${cx} ${cy} L ${ringPoint(cx, cy, R, -32).join(' ')} A ${R} ${R} 0 0 1 ${ringPoint(
                 cx,
@@ -89,7 +75,6 @@ export default function SoundRing({
           </g>
         )}
 
-        {/* concentric range rings */}
         {[1, 0.66, 0.34].map((f, i) => (
           <circle
             key={i}
@@ -97,15 +82,14 @@ export default function SoundRing({
             cy={cy}
             r={R * f}
             fill="none"
-            stroke="rgba(255,255,255,0.14)"
-            strokeWidth={i === 0 ? 1.5 : 1}
+            stroke="rgba(255,255,255,0.1)"
+            strokeWidth={i === 0 ? 1 : 0.8}
           />
         ))}
 
-        {/* cardinal ticks */}
         {cardinals.map(({ deg }) => {
-          const [x1, y1] = ringPoint(cx, cy, R - 6, deg);
-          const [x2, y2] = ringPoint(cx, cy, R + 6, deg);
+          const [x1, y1] = ringPoint(cx, cy, R - 4, deg);
+          const [x2, y2] = ringPoint(cx, cy, R + 4, deg);
           return (
             <line
               key={deg}
@@ -113,13 +97,12 @@ export default function SoundRing({
               y1={y1}
               x2={x2}
               y2={y2}
-              stroke="rgba(255,255,255,0.32)"
-              strokeWidth={2}
+              stroke="rgba(255,255,255,0.2)"
+              strokeWidth={1.5}
             />
           );
         })}
 
-        {/* per-sound directional arcs (width + thickness scale with loudness) */}
         {plotted.map((ev, i) => {
           const r = resolveEvent(ev);
           const bearing = signedAngle(ev.directionDeg - heading) + jitter;
@@ -131,45 +114,33 @@ export default function SoundRing({
           const arcPath = `M ${p1x} ${p1y} A ${R} ${R} 0 0 1 ${p2x} ${p2y}`;
           return (
             <g key={ev.id} opacity={opacity} className={r.isCritical && !reduceMotion ? 'ar-arc-pulse' : ''}>
-              {/* soft glow underlay */}
-              <path
-                d={arcPath}
-                fill="none"
-                stroke={r.color}
-                strokeWidth={stroke + 9}
-                strokeLinecap="round"
-                opacity={0.3}
-                filter="url(#ring-glow)"
-              />
               <path
                 d={arcPath}
                 fill="none"
                 stroke={r.color}
                 strokeWidth={stroke}
                 strokeLinecap="round"
-                style={{ filter: `drop-shadow(0 0 6px ${r.color})` }}
+                opacity={0.85}
               />
             </g>
           );
         })}
 
-        {/* center "you" marker + sonar ping */}
         {!reduceMotion && (
-          <circle cx={cx} cy={cy} r={6} fill="none" stroke="#5b9bff" strokeWidth={2}>
-            <animate attributeName="r" values={`6;${R * 0.5}`} dur="2.6s" repeatCount="indefinite" />
-            <animate attributeName="opacity" values="0.5;0" dur="2.6s" repeatCount="indefinite" />
+          <circle cx={cx} cy={cy} r={4} fill="none" stroke="#6366f1" strokeWidth={1.5}>
+            <animate attributeName="r" values={`4;${R * 0.4}`} dur="2.6s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.4;0" dur="2.6s" repeatCount="indefinite" />
           </circle>
         )}
-        <circle cx={cx} cy={cy} r={4.5} fill="#eef3fb" />
+        <circle cx={cx} cy={cy} r={3.5} fill="#e2e8f0" />
       </svg>
 
-      {/* direction labels (HTML so they read crisply) */}
       {cardinals.map(({ deg, label }) => {
-        const [lx, ly] = ringPoint(cx, cy, R + 14, deg);
+        const [lx, ly] = ringPoint(cx, cy, R + 12, deg);
         return (
           <span
             key={label}
-            className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 font-mono text-[8px] font-bold tracking-widest text-white/45"
+            className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 font-mono text-[7px] font-bold tracking-widest text-white/30"
             style={{ left: lx, top: ly }}
           >
             {label}
@@ -177,12 +148,11 @@ export default function SoundRing({
         );
       })}
 
-      {/* floating sound-type badges pinned to each bearing */}
       {plotted.map((ev, i) => {
         const r = resolveEvent(ev);
         const bearing = signedAngle(ev.directionDeg - heading) + jitter;
         const [bx, by] = ringPoint(cx, cy, R, bearing);
-        const badgeSize = i === 0 ? Math.min(52, size * 0.16) : Math.min(38, size * 0.12);
+        const badgeSize = i === 0 ? Math.min(48, size * 0.14) : Math.min(34, size * 0.1);
         return (
           <div
             key={ev.id}
@@ -200,7 +170,7 @@ export default function SoundRing({
             <SoundBadge resolved={r} size={badgeSize} />
             {showLabels && i === 0 && (
               <span
-                className="mt-0.5 whitespace-nowrap rounded-md bg-black/75 px-1.5 py-0.5 font-mono text-[9px] font-bold text-white backdrop-blur"
+                className="mt-0.5 whitespace-nowrap rounded-md bg-black/75 px-1.5 py-0.5 font-mono text-[8px] font-bold text-white"
                 style={{ borderBottom: `2px solid ${r.color}` }}
               >
                 {r.shortName}

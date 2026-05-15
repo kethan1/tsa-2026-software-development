@@ -18,7 +18,7 @@ const HARD_CODED_EVENTS: SoundEvent[] = [
     id: 'demo-appliance-front',
     category: 'appliance',
     rawLabel: 'Appliance beep',
-    icon: '🔊',
+    icon: '\u{1F50A}',
     urgency: 'normal',
     confidence: 0.9,
     loudness: 0.58,
@@ -30,7 +30,7 @@ const HARD_CODED_EVENTS: SoundEvent[] = [
     id: 'demo-glass-breaking-behind-right',
     category: 'glass',
     rawLabel: 'Glass breaking',
-    icon: '🪟',
+    icon: '\u{1FA9F}',
     urgency: 'emergency',
     confidence: 0.94,
     loudness: 0.96,
@@ -45,28 +45,23 @@ const instantiateEvent = (event: SoundEvent, sequence: number): SoundEvent => ({
   id: `${event.id}-${sequence}-${Date.now()}`,
   timestamp: new Date(),
 });
-// Rear-camera horizontal field of view (approx). Inside this cone a sound is
-// "on screen"; outside it we show the off-screen edge arrow.
 const FOV_DEG = 64;
 const HALF_FOV = FOV_DEG / 2;
-const ARC_HALF_DEG = 22; // half-width of the red damage arc on the ring
+const ARC_HALF_DEG = 22;
 
-// Localisation indicator tuning.
-const NOISE_AMP_DEG = 5; // peak jitter added to the bearing (degrees)
-const CONE_HALF_DEG = 30; // half-width of the translucent uncertainty cone
-const SWEEP_HALF_DEG = 34; // half-width of the rotating scan beam
+const NOISE_AMP_DEG = 5;
+const CONE_HALF_DEG = 30;
+const SWEEP_HALF_DEG = 34;
 
 const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const cardinal = (deg: number) => CARDINALS[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
 
-// Normalize an angle into the (-180, 180] range.
 const signedAngle = (deg: number) => {
   let a = ((deg % 360) + 360) % 360;
   if (a > 180) a -= 360;
   return a;
 };
 
-// A point on a ring, with 0° at the top and angle increasing clockwise.
 const ringPoint = (cx: number, cy: number, r: number, deg: number): [number, number] => {
   const rad = (deg * Math.PI) / 180;
   return [cx + r * Math.sin(rad), cy - r * Math.cos(rad)];
@@ -83,16 +78,13 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
   const [pendingNext, setPendingNext] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState('');
-  const [flash, setFlash] = useState(false); // red damage flash on a new event
+  const [flash, setFlash] = useState(false);
 
-  // Phone heading (compass). 0 = facing North. Defaults to 0 (works on desktop).
   const [heading, setHeading] = useState(0);
   const [compassOn, setCompassOn] = useState(false);
 
-  // Measured render size, so the SVG overlay matches the camera box exactly.
   const [dims, setDims] = useState({ w: 380, h: 560 });
 
-  // Live localisation jitter (degrees) + the user's reduced-motion preference.
   const [noiseDeg, setNoiseDeg] = useState(0);
   const [reduceMotion, setReduceMotion] = useState(false);
 
@@ -103,7 +95,6 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
   const orientHandler = useRef<((e: DeviceOrientationEvent) => void) | null>(null);
   const lastEventId = useRef<string | null>(null);
 
-  // ---- Track container size for the SVG overlay ----
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -115,7 +106,6 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
     return () => ro.disconnect();
   }, []);
 
-  // ---- Track the reduced-motion preference (disables jitter + decorative spin) ----
   useEffect(() => {
     const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)');
     if (!mq) return;
@@ -125,7 +115,6 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
     return () => mq.removeEventListener?.('change', update);
   }, []);
 
-  // ---- Camera ----
   const startCamera = async () => {
     try {
       setCameraError('');
@@ -140,8 +129,7 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
       }
       setCameraOn(true);
     } catch (err) {
-      // Demo still works without the camera — we just show a dark backdrop.
-      setCameraError('Camera unavailable — running the indicator over a dark backdrop.');
+      setCameraError('Camera unavailable \u2014 running the indicator over a dark backdrop.');
       setCameraOn(false);
     }
   };
@@ -155,7 +143,6 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
     setCameraOn(false);
   };
 
-  // ---- Compass / device orientation (optional; makes it truly AR on a phone) ----
   const enableCompass = async () => {
     const DOE = window.DeviceOrientationEvent as any;
     try {
@@ -171,9 +158,9 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
       const webkit = (e as any).webkitCompassHeading;
       let h: number | null = null;
       if (typeof webkit === 'number' && !Number.isNaN(webkit)) {
-        h = webkit; // iOS: already a 0..360 compass heading
+        h = webkit;
       } else if (e.alpha != null) {
-        h = 360 - e.alpha; // Android: alpha is counter-clockwise from North
+        h = 360 - e.alpha;
       }
       if (h != null) {
         setHeading(((h % 360) + 360) % 360);
@@ -220,7 +207,6 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
     }, NEXT_EVENT_DELAY_MS);
   };
 
-  // Camera + compass run for the whole life of the view.
   useEffect(() => {
     startCamera();
     enableCompass();
@@ -235,20 +221,17 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
 
   const activeEvent = events[0] || null;
 
-  // ---- Alert the phone whenever a new event becomes active. ----
   useEffect(() => {
     if (!activeEvent) return;
     if (lastEventId.current === activeEvent.id) return;
     lastEventId.current = activeEvent.id;
 
-    // Visual damage flash + a strong haptic buzz to the phone.
     setFlash(true);
     if ('vibrate' in navigator) navigator.vibrate([60, 40, 120, 40, 200]);
     const t = window.setTimeout(() => setFlash(false), 1100);
     return () => clearTimeout(t);
   }, [activeEvent]);
 
-  // ---- Live localisation jitter: nudge the bearing with smooth, organic noise ----
   useEffect(() => {
     const live = !!activeEvent;
     if (!live || reduceMotion) {
@@ -259,8 +242,6 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
     const start = performance.now();
     const loop = (now: number) => {
       const t = (now - start) / 1000;
-      // Layered sines of incommensurate frequencies → noise that wanders but never
-      // jumps, so the arc trembles like a real direction-of-arrival estimate.
       const n =
         NOISE_AMP_DEG *
         (0.6 * Math.sin(t * 2.3) + 0.3 * Math.sin(t * 5.7 + 1.3) + 0.1 * Math.sin(t * 11 + 0.7));
@@ -271,47 +252,38 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
     return () => cancelAnimationFrame(raf);
   }, [activeEvent, reduceMotion]);
 
-  // ---------- Geometry of the active indicator ----------
   const showIndicator = !!activeEvent;
   const resolved = activeEvent ? resolveEvent(activeEvent) : null;
   const isEmergency = resolved?.isCritical ?? false;
-  const arcColor = !resolved ? '#38bdf8' : isEmergency ? '#ef4444' : '#38bdf8';
+  const arcColor = !resolved ? '#6366f1' : isEmergency ? '#ef4444' : '#6366f1';
 
   const { w, h } = dims;
   const cx = w / 2;
   const cy = h / 2;
   const R = Math.max(70, Math.min(w, h) * 0.34);
 
-  // True bearing of the sound relative to where the phone is pointing…
   const relative = activeEvent ? signedAngle(activeEvent.directionDeg - heading) : 0;
-  // …plus the live jitter, so the on-screen localisation never sits perfectly still.
   const displayRelative = relative + noiseDeg;
   const offScreen = Math.abs(relative) > HALF_FOV;
-  const onRight = relative >= 0; // off-screen side / which way to turn
+  const onRight = relative >= 0;
 
-  // Damage arc on the ring, centered on the (jittered) bearing.
   const [ax1, ay1] = ringPoint(cx, cy, R, displayRelative - ARC_HALF_DEG);
   const [ax2, ay2] = ringPoint(cx, cy, R, displayRelative + ARC_HALF_DEG);
   const arcPath = `M ${ax1} ${ay1} A ${R} ${R} 0 0 1 ${ax2} ${ay2}`;
-  // Chevron at the arc midpoint, pointing radially outward.
   const [mx, my] = ringPoint(cx, cy, R + 16, displayRelative);
 
-  // Translucent uncertainty cone fanning from "you" out toward the bearing.
   const [cone1x, cone1y] = ringPoint(cx, cy, R, displayRelative - CONE_HALF_DEG);
   const [cone2x, cone2y] = ringPoint(cx, cy, R, displayRelative + CONE_HALF_DEG);
   const conePath = `M ${cx} ${cy} L ${cone1x} ${cone1y} A ${R} ${R} 0 0 1 ${cone2x} ${cone2y} Z`;
 
-  // Rotating scan beam (drawn pointing up; spun continuously by SMIL).
   const [sweep1x, sweep1y] = ringPoint(cx, cy, R, -SWEEP_HALF_DEG);
   const [sweep2x, sweep2y] = ringPoint(cx, cy, R, SWEEP_HALF_DEG);
   const sweepPath = `M ${cx} ${cy} L ${sweep1x} ${sweep1y} A ${R} ${R} 0 0 1 ${sweep2x} ${sweep2y} Z`;
 
-  // On-screen reticle: map the jittered bearing across the visible cone.
   const reticleX = cx + (displayRelative / HALF_FOV) * (w / 2 - 44);
 
   return (
-    <div className="relative h-full min-h-[calc(100dvh-4.5rem)] w-full overflow-hidden bg-black">
-      {/* ===== Camera feed (or dark backdrop) ===== */}
+    <div className="relative h-full w-full overflow-hidden bg-black">
       <div ref={containerRef} className="absolute inset-0">
         <video
           ref={videoRef}
@@ -322,10 +294,9 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
           }`}
         />
         {!cameraOn && (
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,#0c2550_0%,#05060c_100%)]" />
+          <div className="absolute inset-0 bg-black" />
         )}
 
-        {/* ===== SVG localisation indicator overlay ===== */}
         <svg
             className="pointer-events-none absolute inset-0"
             width="100%"
@@ -334,23 +305,19 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
             preserveAspectRatio="none"
           >
             <defs>
-              <filter id="ar-glow" x="-60%" y="-60%" width="220%" height="220%">
-                <feGaussianBlur stdDeviation="5" />
-              </filter>
               <radialGradient id="ar-cone-grad" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor={arcColor} stopOpacity="0.34" />
-                <stop offset="70%" stopColor={arcColor} stopOpacity="0.13" />
+                <stop offset="0%" stopColor={arcColor} stopOpacity="0.25" />
+                <stop offset="70%" stopColor={arcColor} stopOpacity="0.08" />
                 <stop offset="100%" stopColor={arcColor} stopOpacity="0" />
               </radialGradient>
               <radialGradient id="ar-sweep-grad" cx="50%" cy="50%" r="50%">
                 <stop offset="55%" stopColor={arcColor} stopOpacity="0" />
-                <stop offset="100%" stopColor={arcColor} stopOpacity="0.22" />
+                <stop offset="100%" stopColor={arcColor} stopOpacity="0.15" />
               </radialGradient>
             </defs>
 
-            {/* rotating scan beam, behind everything */}
             {!reduceMotion && (
-              <g opacity="0.9">
+              <g opacity="0.7">
                 <path d={sweepPath} fill="url(#ar-sweep-grad)" />
                 <animateTransform
                   attributeName="transform"
@@ -369,21 +336,19 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
               cy={cy}
               r={R}
               fill="none"
-              stroke="rgba(255,255,255,0.45)"
-              strokeWidth={2.5}
-              style={{ filter: 'drop-shadow(0 0 3px rgba(0,0,0,0.6))' }}
+              stroke="rgba(255,255,255,0.25)"
+              strokeWidth={1.5}
             />
 
-            {/* tick marks + labels at front / right / back / left */}
             {([
               [0, 'FRONT'],
               [90, 'RIGHT'],
               [180, 'BACK'],
               [270, 'LEFT'],
             ] as const).map(([d, label]) => {
-              const [tx1, ty1] = ringPoint(cx, cy, R - 7, d);
-              const [tx2, ty2] = ringPoint(cx, cy, R + 7, d);
-              const [lx, ly] = ringPoint(cx, cy, R + 22, d);
+              const [tx1, ty1] = ringPoint(cx, cy, R - 5, d);
+              const [tx2, ty2] = ringPoint(cx, cy, R + 5, d);
+              const [lx, ly] = ringPoint(cx, cy, R + 18, d);
               return (
                 <g key={d}>
                   <line
@@ -391,19 +356,18 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
                     y1={ty1}
                     x2={tx2}
                     y2={ty2}
-                    stroke="rgba(255,255,255,0.35)"
-                    strokeWidth={2}
+                    stroke="rgba(255,255,255,0.25)"
+                    strokeWidth={1.5}
                   />
                   <text
                     x={lx}
                     y={ly}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fontSize={11}
+                    fontSize={10}
                     fontWeight="bold"
                     letterSpacing="1.5"
-                    fill="rgba(255,255,255,0.7)"
-                    style={{ textShadow: '0 0 4px rgba(0,0,0,0.8)' }}
+                    fill="rgba(255,255,255,0.5)"
                   >
                     {label}
                   </text>
@@ -413,7 +377,6 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
 
             {showIndicator && (
               <>
-                {/* uncertainty cone toward the sound, with dashed bearing limits */}
                 <path d={conePath} fill="url(#ar-cone-grad)" />
                 <line
                   x1={cx}
@@ -421,9 +384,9 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
                   x2={cone1x}
                   y2={cone1y}
                   stroke={arcColor}
-                  strokeWidth={1}
-                  strokeDasharray="3 5"
-                  opacity={0.45}
+                  strokeWidth={0.8}
+                  strokeDasharray="2 4"
+                  opacity={0.35}
                 />
                 <line
                   x1={cx}
@@ -431,64 +394,48 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
                   x2={cone2x}
                   y2={cone2y}
                   stroke={arcColor}
-                  strokeWidth={1}
-                  strokeDasharray="3 5"
-                  opacity={0.45}
-                />
-
-                {/* soft glow underlay for the live arc */}
-                <path
-                  d={arcPath}
-                  fill="none"
-                  stroke={arcColor}
-                  strokeWidth={18}
-                  strokeLinecap="round"
+                  strokeWidth={0.8}
+                  strokeDasharray="2 4"
                   opacity={0.35}
-                  filter="url(#ar-glow)"
                 />
 
-                {/* the live damage arc, pointing at the sound */}
                 <g className="ar-arc-pulse">
                   <path
                     d={arcPath}
                     fill="none"
                     stroke={arcColor}
-                    strokeWidth={9}
+                    strokeWidth={5}
                     strokeLinecap="round"
-                    style={{ filter: `drop-shadow(0 0 8px ${arcColor})` }}
+                    opacity={0.85}
                   />
-                  {/* chevron at the arc midpoint, rotated to point outward */}
                   <g transform={`translate(${mx} ${my}) rotate(${displayRelative})`}>
                     <path
-                      d="M -9 6 L 0 -8 L 9 6"
+                      d="M -7 5 L 0 -6 L 7 5"
                       fill="none"
                       stroke={arcColor}
-                      strokeWidth={3.5}
+                      strokeWidth={2.5}
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      style={{ filter: `drop-shadow(0 0 6px ${arcColor})` }}
                     />
                   </g>
                 </g>
               </>
             )}
 
-            {/* center "you" marker with an expanding sonar ping */}
             {!reduceMotion && (
-              <circle cx={cx} cy={cy} r={6} fill="none" stroke={arcColor} strokeWidth={2}>
+              <circle cx={cx} cy={cy} r={4} fill="none" stroke={arcColor} strokeWidth={1.5}>
                 <animate
                   attributeName="r"
-                  values={`6;${R * 0.5}`}
+                  values={`4;${R * 0.35}`}
                   dur="2.4s"
                   repeatCount="indefinite"
                 />
-                <animate attributeName="opacity" values="0.5;0" dur="2.4s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.4;0" dur="2.4s" repeatCount="indefinite" />
               </circle>
             )}
-            <circle cx={cx} cy={cy} r={5} fill="white" opacity={0.9} />
+            <circle cx={cx} cy={cy} r={3.5} fill="white" opacity={0.8} />
           </svg>
 
-        {/* ===== On-screen reticle (sound is within the camera cone) ===== */}
         {showIndicator && !offScreen && resolved && (
           <div
             className="pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
@@ -496,19 +443,18 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
           >
             <div
               className={`flex flex-col items-center gap-1 ${
-                isEmergency ? 'text-red-400' : 'text-sky-300'
+                isEmergency ? 'text-red-400' : 'text-[var(--color-primary)]'
               }`}
             >
-              <Crosshair size={56} strokeWidth={1.5} className="animate-ping opacity-40 absolute" />
-              <Crosshair size={56} strokeWidth={1.5} />
-              <span className="mt-1 rounded-full bg-black/70 px-2.5 py-0.5 text-2xl shadow-lg backdrop-blur">
+              <Crosshair size={48} strokeWidth={1.5} className="animate-ping opacity-30 absolute" />
+              <Crosshair size={48} strokeWidth={1.5} />
+              <span className="mt-1 rounded-lg bg-black/70 px-2 py-0.5 text-2xl">
                 {resolved.icon}
               </span>
             </div>
           </div>
         )}
 
-        {/* ===== Off-screen edge arrow (Fortnite-style "turn this way") ===== */}
         {showIndicator && offScreen && resolved && (
           <div
             className={`pointer-events-none absolute top-1/2 -translate-y-1/2 ${
@@ -519,77 +465,71 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
               className={`flex flex-col items-center gap-1.5 ${onRight ? 'ar-chev-right' : 'ar-chev-left'}`}
             >
               <div
-                className={`flex h-16 w-16 items-center justify-center rounded-full border-2 shadow-[0_0_24px_rgba(0,0,0,0.6)] backdrop-blur ${
+                className={`flex h-14 w-14 items-center justify-center rounded-full border-2 ${
                   isEmergency
-                    ? 'border-red-400 bg-red-500/30 text-red-200'
-                    : 'border-sky-400 bg-sky-500/25 text-sky-100'
+                    ? 'border-red-400 bg-red-500/20 text-red-200'
+                    : 'border-[var(--color-primary)] bg-[var(--color-primary)]/20 text-[var(--color-primary)]'
                 }`}
               >
                 {onRight ? (
-                  <ChevronRight size={42} strokeWidth={3} />
+                  <ChevronRight size={36} strokeWidth={2.5} />
                 ) : (
-                  <ChevronLeft size={42} strokeWidth={3} />
+                  <ChevronLeft size={36} strokeWidth={2.5} />
                 )}
               </div>
-              <span className="rounded-full bg-black/70 px-2 py-0.5 text-xl shadow backdrop-blur">
+              <span className="rounded-lg bg-black/70 px-2 py-0.5 text-xl">
                 {resolved.icon}
               </span>
             </div>
           </div>
         )}
 
-        {/* ===== Red damage vignette on a fresh alert ===== */}
         {flash && (
           <div
             className="ar-damage-flash pointer-events-none absolute inset-0"
             style={{
-              boxShadow: 'inset 0 0 140px 50px rgba(239,68,68,0.85)',
-              background:
-                'radial-gradient(ellipse at center, transparent 55%, rgba(239,68,68,0.28) 100%)',
+              boxShadow: 'inset 0 0 100px 30px rgba(239,68,68,0.6)',
             }}
           />
         )}
 
-        {/* ===== Persistent emergency edge tint while an emergency is active ===== */}
         {showIndicator && isEmergency && !flash && (
           <div
             className="pointer-events-none absolute inset-0 animate-pulse"
-            style={{ boxShadow: 'inset 0 0 90px 18px rgba(239,68,68,0.35)' }}
+            style={{ boxShadow: 'inset 0 0 60px 10px rgba(239,68,68,0.2)' }}
           />
         )}
 
-        {/* ===== Top status banner (right-aligned to clear the Detect control) ===== */}
         <div
           className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-end px-3"
           style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
         >
-          <div className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-2 backdrop-blur">
-            <span className="h-2 w-2 rounded-full animate-pulse bg-emerald-400" />
-            <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-white">
+          <div className="flex items-center gap-2 rounded-lg bg-black/60 px-2.5 py-1.5">
+            <span className="h-1.5 w-1.5 rounded-full animate-pulse bg-emerald-400" />
+            <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-white/80">
               Surround Live
             </span>
           </div>
         </div>
 
-        {/* ===== Active-sound caption ===== */}
         {showIndicator && resolved && activeEvent && (
           <div className="pointer-events-none absolute inset-x-0 bottom-24 flex justify-center px-4">
             <div
-              className={`flex items-center gap-3 rounded-2xl border px-4 py-2.5 backdrop-blur-md ${
+              className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${
                 isEmergency
-                  ? 'border-red-400/60 bg-red-950/70 text-red-50'
-                  : 'border-sky-400/50 bg-slate-900/70 text-sky-50'
+                  ? 'border-red-400/40 bg-black/70 text-red-50'
+                  : 'border-[var(--color-primary)]/30 bg-black/70 text-[var(--color-ink)]'
               }`}
             >
-              <span className="text-3xl">{resolved.icon}</span>
+              <span className="text-2xl">{resolved.icon}</span>
               <div className="leading-tight">
-                <p className="flex items-center gap-1.5 text-sm font-extrabold">
-                  {isEmergency && <AlertTriangle size={15} className="text-red-300" />}
+                <p className="flex items-center gap-1.5 text-sm font-bold">
+                  {isEmergency && <AlertTriangle size={14} className="text-red-300" />}
                   {resolved.name}
                 </p>
-                <p className="font-mono text-[11px] opacity-80">
-                  {activeEvent.directionDeg}° · {cardinal(activeEvent.directionDeg)} ·{' '}
-                  {offScreen ? (onRight ? 'turn right →' : '← turn left') : 'in view'} ·{' '}
+                <p className="font-mono text-[10px] opacity-70">
+                  {activeEvent.directionDeg}\u00b0 &middot; {cardinal(activeEvent.directionDeg)} &middot;{' '}
+                  {offScreen ? (onRight ? 'turn right \u2192' : '\u2190 turn left') : 'in view'} &middot;{' '}
                   {Math.round(activeEvent.confidence * 100)}%
                 </p>
               </div>
@@ -598,7 +538,7 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
         )}
 
         {cameraError && (
-          <div className="absolute inset-x-0 top-14 mx-auto w-fit rounded-lg bg-black/70 px-3 py-1.5 text-center font-mono text-[10px] text-amber-200 backdrop-blur">
+          <div className="absolute inset-x-0 top-14 mx-auto w-fit rounded-lg bg-black/70 px-3 py-1.5 text-center font-mono text-[10px] text-amber-200">
             {cameraError}
           </div>
         )}
@@ -607,29 +547,29 @@ export default function ARView({ onEventsChange, onEventDetected }: ARViewProps)
       <button
         onClick={toggleNextEvent}
         disabled={pendingNext}
-        className={`absolute left-3 z-30 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-[11px] font-black uppercase tracking-[0.14em] shadow-lg backdrop-blur transition active:scale-95 ${
+        className={`absolute left-3 z-30 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] transition active:scale-95 ${
           pendingNext
-            ? 'border-cyan-200/20 bg-cyan-200/15 text-cyan-100/55'
+            ? 'border-white/10 bg-black/50 text-white/50'
             : events.length > 0
-              ? 'border-white/20 bg-black/65 text-white/80 hover:bg-white/10'
-              : 'border-cyan-200/35 bg-black/65 text-cyan-100 hover:bg-cyan-200/15'
+              ? 'border-white/10 bg-black/60 text-white/70 hover:bg-black/80'
+              : 'border-[var(--color-primary)]/40 bg-black/60 text-[var(--color-primary)] hover:bg-black/80'
         }`}
         style={{ top: 'calc(env(safe-area-inset-top) + 0.75rem)' }}
         aria-label={events.length > 0 ? 'Clear detected sound' : 'Simulate a detected sound'}
       >
         {pendingNext ? (
           <>
-            <Radar size={15} className="animate-spin" />
+            <Radar size={13} className="animate-spin" />
             S
           </>
         ) : events.length > 0 ? (
           <>
-            <X size={15} />
+            <X size={13} />
             C
           </>
         ) : (
           <>
-            <Radar size={15} />
+            <Radar size={13} />
             D
           </>
         )}
