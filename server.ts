@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
-import { analyzeFrame, analyzeAudio, synthesizeSpeech, HttpError } from './lib/gemini';
+import { analyzeFrame, analyzeAudio, HttpError } from './lib/gemini';
 
 dotenv.config();
 
@@ -32,15 +32,6 @@ app.post('/api/analyze-audio', async (req, res) => {
     res.json(await analyzeAudio(audioBase64, mimeType));
   } catch (err) {
     sendError(res, err, 'Audio cognitive pipeline internal crash.', 'Gemini audio analysis failure:');
-  }
-});
-
-app.post('/api/synthesize-speech', async (req, res) => {
-  try {
-    const { text, voice } = req.body ?? {};
-    res.json(await synthesizeSpeech(text, voice));
-  } catch (err) {
-    sendError(res, err, 'Speech synthesis pipeline internal crash.', 'Gemini speech synthesis failure:');
   }
 });
 

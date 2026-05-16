@@ -1,7 +1,6 @@
-import { GoogleGenAI, Modality, Type } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 
 const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_TTS_MODEL = 'gemini-3.1-flash-tts-preview';
 
 // Lazily build the client so the API key is read at request time, not import
 // time. This keeps things working both locally (server.ts loads .env via dotenv
@@ -36,38 +35,6 @@ export class HttpError extends Error {
     super(message);
     this.status = status;
   }
-}
-
-function pcmBase64ToWavBase64(pcmBase64: string, sampleRate = 24000, channels = 1, bitsPerSample = 16) {
-  const pcm = Buffer.from(pcmBase64, 'base64');
-  const header = Buffer.alloc(44);
-  const byteRate = (sampleRate * channels * bitsPerSample) / 8;
-  const blockAlign = (channels * bitsPerSample) / 8;
-
-  header.write('RIFF', 0);
-  header.writeUInt32LE(36 + pcm.length, 4);
-  header.write('WAVE', 8);
-  header.write('fmt ', 12);
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20);
-  header.writeUInt16LE(channels, 22);
-  header.writeUInt32LE(sampleRate, 24);
-  header.writeUInt32LE(byteRate, 28);
-  header.writeUInt16LE(blockAlign, 32);
-  header.write('data', 36);
-  header.writeUInt32LE(pcm.length, 40);
-
-  return Buffer.concat([header, pcm]).toString('base64');
-}
-
-function firstString(value: unknown) {
-  return typeof value === 'string' && value.trim() ? value.trim() : '';
-}
-
-// Gemini TTS returns raw PCM tagged like "audio/L16;codec=pcm;rate=24000".
-function sampleRateFromMime(mimeType: string | undefined, fallback = 24000) {
-  const match = mimeType ? /rate=(\d+)/i.exec(mimeType) : null;
-  return match ? Number(match[1]) : fallback;
 }
 
 export async function analyzeFrame(imageBuffer: unknown, mode: unknown): Promise<{ result: string }> {
@@ -190,48 +157,4 @@ confidence below 0.3.`;
     const cleaned = raw.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
     return JSON.parse(cleaned);
   }
-}
-
-export async function synthesizeSpeech(
-  textInput: unknown,
-  voiceInput: unknown,
-): Promise<{ audioBase64: string; mimeType: string; voice: string }> {
-  const text = firstString(textInput);
-  const voice = firstString(voiceInput) || 'Kore';
-
-  if (!text) {
-    throw new HttpError(400, 'Missing text parameter.');
-  }
-
-  const ai = getAi();
-  if (!ai) {
-    throw new HttpError(503, 'Gemini services are not initialized. Add GEMINI_API_KEY in the Secrets panel.');
-  }
-
-  const response = await ai.models.generateContent({
-    model: GEMINI_TTS_MODEL,
-    contents: { parts: [{ text }] },
-    config: {
-      responseModalities: [Modality.AUDIO],
-      speechConfig: {
-        voiceConfig: {
-          prebuiltVoiceConfig: { voiceName: voice },
-        },
-      },
-    },
-  });
-
-  const audioPart = response.candidates?.[0]?.content?.parts?.find((part) => part.inlineData?.data);
-  const rawAudioBase64 = audioPart?.inlineData?.data;
-  const audioMimeType = audioPart?.inlineData?.mimeType;
-  if (!rawAudioBase64) {
-    throw new HttpError(502, 'Gemini did not return audio data.');
-  }
-
-  // Gemini hands back raw 16-bit PCM; wrap it in a WAV header for the browser.
-  const audioBase64 = /audio\/wav/i.test(audioMimeType || '')
-    ? rawAudioBase64
-    : pcmBase64ToWavBase64(rawAudioBase64, sampleRateFromMime(audioMimeType), 1);
-
-  return { audioBase64, mimeType: 'audio/wav', voice };
 }

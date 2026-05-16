@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   List,
+  Loader2,
   MessageSquareText,
   Mic,
   MicOff,
@@ -10,6 +11,7 @@ import {
   Settings,
   Square,
   Trash2,
+  Volume2,
 } from 'lucide-react';
 
 import { SoundEvent, UserSettings } from './types';
@@ -23,6 +25,21 @@ import {
 import ARView from './components/ARView';
 import { SoundBadge } from './components/SoundBadge';
 import { useInstallPrompt } from './pwa';
+import {
+  analyzeSentence,
+  EMOTION_COLORS,
+  EMOTION_LABELS,
+  type EmotionId,
+  type SentenceAnalysis,
+  type Token,
+} from './lib/sentiment';
+import {
+  DEFAULT_VOICE,
+  hasGeminiKey,
+  NATURAL_VOICES,
+  SpeechApiError,
+  synthesizeSpeech,
+} from './lib/speechApi';
 
 const CARD = 'rounded-xl border border-[var(--color-line)] bg-[var(--color-paper)]';
 const HISTORY_LIMIT = 40;
@@ -45,40 +62,71 @@ const timeAgo = (date: Date) => {
   return `${minutes}m ago`;
 };
 
-type EmotionId = 'angry' | 'urgent' | 'happy' | 'sad' | 'calm' | 'neutral';
-
 type SpeechLine = {
   id: string;
   text: string;
-  emotion: EmotionId;
+  analysis: SentenceAnalysis;
   confidence: number | null;
   timestamp: Date;
 };
 
-const EMOTION_COLORS: Record<EmotionId, string> = {
-  angry: '#ef4444',
-  urgent: '#f59e0b',
-  happy: '#22c55e',
-  sad: '#3b82f6',
-  calm: '#14b8a6',
-  neutral: '#a3a3a3',
-};
+// Inline style for a single coloured word. Emotional words get a tinted chip so
+// the highlighting is obvious; neutral words stay plain and legible.
+function wordStyle(emotion: EmotionId): React.CSSProperties {
+  if (emotion === 'neutral') return { color: 'var(--color-ink)' };
+  const color = EMOTION_COLORS[emotion];
+  return {
+    color,
+    fontWeight: 600,
+    backgroundColor: `${color}22`,
+    borderRadius: '4px',
+    padding: '0 2px',
+    boxDecorationBreak: 'clone',
+    WebkitBoxDecorationBreak: 'clone',
+  };
+}
 
-const detectEmotion = (value: string): EmotionId => {
-  const text = value.toLowerCase();
-  const angryWords = ['angry', 'mad', 'furious', 'stop', 'hate', 'annoyed', 'upset', 'ridiculous', 'shut up'];
-  const urgentWords = ['help', 'emergency', 'hurry', 'now', 'danger', 'careful', 'watch out', 'run', 'fire'];
-  const happyWords = ['happy', 'great', 'thanks', 'thank you', 'awesome', 'love', 'nice', 'excited', 'glad'];
-  const sadWords = ['sad', 'sorry', 'hurt', 'crying', 'lonely', 'tired', 'miss', 'worried'];
-  const calmWords = ['okay', 'fine', 'calm', 'relax', 'breathe', 'slowly', 'peaceful'];
+// Renders a transcript as a run of per-word coloured spans.
+function ColoredCaption({ tokens, dim }: { tokens: Token[]; dim?: boolean }) {
+  return (
+    <span className={dim ? 'opacity-60' : undefined}>
+      {tokens.map((token, index) =>
+        token.text.trim() === '' ? (
+          <span key={index}>{token.text}</span>
+        ) : (
+          <span key={index} style={wordStyle(token.emotion)}>
+            {token.text}
+          </span>
+        ),
+      )}
+    </span>
+  );
+}
 
-  if (angryWords.some((word) => text.includes(word)) || /!{2,}/.test(value)) return 'angry';
-  if (urgentWords.some((word) => text.includes(word))) return 'urgent';
-  if (happyWords.some((word) => text.includes(word))) return 'happy';
-  if (sadWords.some((word) => text.includes(word))) return 'sad';
-  if (calmWords.some((word) => text.includes(word))) return 'calm';
-  return 'neutral';
-};
+// Overall sentence sentiment: dominant emotion + a negative↔positive meter.
+function SentimentBadge({ analysis }: { analysis: SentenceAnalysis }) {
+  const color = EMOTION_COLORS[analysis.overall];
+  // Map polarity (-1..1) onto a 0..100 marker position.
+  const markerPct = Math.round(((analysis.polarity + 1) / 2) * 100);
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className="rounded-full px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em]"
+        style={{ color, backgroundColor: `${color}1f` }}
+      >
+        {EMOTION_LABELS[analysis.overall]}
+      </span>
+      <span className="relative h-1.5 w-14 overflow-hidden rounded-full bg-gradient-to-r from-[#3b82f6] via-[#9ca3af] to-[#22c55e]">
+        <span
+          className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-ink"
+          style={{ left: `${markerPct}%` }}
+        />
+      </span>
+    </div>
+  );
+}
+
+const LEGEND: EmotionId[] = ['happy', 'calm', 'sad', 'urgent', 'angry'];
 
 export default function App() {
   const [screen, setScreen] = useState<ScreenId>('main');
@@ -223,44 +271,61 @@ function SpeechScreen() {
   const [speechError, setSpeechError] = useState('');
   const [lines, setLines] = useState<SpeechLine[]>([]);
   const [interimText, setInterimText] = useState('');
+
   const [speakText, setSpeakText] = useState('I need a quiet route to the exit, please.');
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [selectedVoiceName, setSelectedVoiceName] = useState('');
-  const [speaking, setSpeaking] = useState(false);
+  const [selectedVoice, setSelectedVoice] = useState(DEFAULT_VOICE);
+  const [ttsState, setTtsState] = useState<'idle' | 'loading' | 'playing'>('idle');
   const [ttsError, setTtsError] = useState('');
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const ttsReady = hasGeminiKey();
+
+  // Live, colour-coded interim caption recomputed as words stream in.
+  const interimAnalysis = interimText ? analyzeSentence(interimText) : null;
 
   useEffect(() => {
     const SpeechRecognitionAPI =
       (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
-    setSttSupported(Boolean(SpeechRecognitionAPI));
-
-    const synth = window.speechSynthesis;
-    if (synth) {
-      const loadVoices = () => {
-        const available = synth.getVoices();
-        if (available.length > 0) {
-          setVoices(available);
-          setSelectedVoiceName((prev) => prev || available[0].name);
-        }
-      };
-      loadVoices();
-      synth.addEventListener('voiceschanged', loadVoices);
-      return () => {
-        synth.removeEventListener('voiceschanged', loadVoices);
-        synth.cancel();
-        recognitionRef.current?.abort();
-      };
+    const supported = Boolean(SpeechRecognitionAPI);
+    setSttSupported(supported);
+    if (!supported) {
+      setSpeechError(
+        'Live speech-to-text needs Chrome, Edge, or Safari. Firefox and Brave block the speech engine.',
+      );
+    } else if (!window.isSecureContext) {
+      // The Web Speech API only runs in a secure context. Phones hitting the dev
+      // server over a LAN IP (http://192.168.x.x) land here and the mic stays dead.
+      setSpeechError(
+        'Speech-to-text needs a secure page. Open the app over https or on localhost to enable the mic.',
+      );
     }
     return () => {
       recognitionRef.current?.abort();
+      audioRef.current?.pause();
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
     };
   }, []);
 
-  const startRecording = () => {
+  const startRecording = async () => {
     const SpeechRecognitionAPI =
       (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
     if (!SpeechRecognitionAPI) {
       setSpeechError('Speech recognition is not available in this browser.');
+      return;
+    }
+    if (!window.isSecureContext) {
+      setSpeechError('Speech-to-text needs a secure page (https or localhost).');
+      return;
+    }
+
+    // Ask for the mic explicitly first so a blocked permission surfaces as a
+    // clear message instead of a silent dead mic. The recognition engine reuses
+    // this grant, so it won't prompt twice.
+    try {
+      const stream = await navigator.mediaDevices?.getUserMedia({ audio: true });
+      stream?.getTracks().forEach((track) => track.stop());
+    } catch {
+      setSpeechError('Microphone access is blocked. Allow the mic for this site, then tap the mic again.');
       return;
     }
 
@@ -275,13 +340,14 @@ function SpeechScreen() {
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
         if (result.isFinal) {
-          const text = result[0].transcript;
+          const text = result[0].transcript.trim();
+          if (!text) continue;
           setLines((prev) =>
             [
               {
                 id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
                 text,
-                emotion: detectEmotion(text),
+                analysis: analyzeSentence(text),
                 confidence: result[0].confidence ?? null,
                 timestamp: new Date(),
               },
@@ -296,13 +362,25 @@ function SpeechScreen() {
     };
 
     recognition.onerror = (event: any) => {
-      if (event.error === 'network' || event.error === 'no-speech' || event.error === 'aborted') return;
-      setSpeechError(`Recognition error: ${event.error}`);
-      setRecording(false);
+      // Benign during continuous listening — let onend auto-restart silently.
+      if (event.error === 'no-speech' || event.error === 'aborted') return;
+
+      // Anything else is fatal: stop the retry loop and tell the user why.
       isRecordingRef.current = false;
+      setRecording(false);
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        setSpeechError('Microphone access is blocked. Allow the mic for this site, then tap the mic again.');
+      } else if (event.error === 'network') {
+        setSpeechError(
+          'The speech engine is unreachable. Check your connection — Brave and Firefox block it, so use Chrome, Edge, or Safari.',
+        );
+      } else {
+        setSpeechError(`Recognition error: ${event.error}`);
+      }
     };
 
     recognition.onend = () => {
+      setInterimText('');
       if (isRecordingRef.current) {
         try {
           recognition.start();
@@ -328,36 +406,42 @@ function SpeechScreen() {
     setInterimText('');
   };
 
-  const speak = () => {
-    const text = speakText.trim();
-    if (!text) return;
-
-    const synth = window.speechSynthesis;
-    if (!synth) {
-      setTtsError('Speech synthesis is not available in this browser.');
-      return;
+  const stopSpeaking = () => {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
     }
-
-    setTtsError('');
-    synth.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    const voice = voices.find((v) => v.name === selectedVoiceName);
-    if (voice) utterance.voice = voice;
-
-    utterance.onstart = () => setSpeaking(true);
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => {
-      setTtsError('Speech synthesis failed.');
-      setSpeaking(false);
-    };
-
-    synth.speak(utterance);
+    setTtsState('idle');
   };
 
-  const stopSpeaking = () => {
-    window.speechSynthesis?.cancel();
-    setSpeaking(false);
+  const speak = async () => {
+    const text = speakText.trim();
+    if (!text || ttsState === 'loading') return;
+
+    stopSpeaking();
+    setTtsError('');
+    setTtsState('loading');
+
+    try {
+      const url = await synthesizeSpeech(text, selectedVoice);
+      audioUrlRef.current = url;
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => stopSpeaking();
+      audio.onerror = () => {
+        setTtsError('Could not play the synthesized audio.');
+        stopSpeaking();
+      };
+      await audio.play();
+      setTtsState('playing');
+    } catch (err) {
+      const message =
+        err instanceof SpeechApiError ? err.message : 'Speech synthesis failed. Please try again.';
+      setTtsError(message);
+      setTtsState('idle');
+    }
   };
 
   const speechStatus = recording
@@ -397,6 +481,21 @@ function SpeechScreen() {
           </button>
         </div>
 
+        {/* Colour legend so the per-word highlighting is readable at a glance. */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+          {LEGEND.map((emotion) => (
+            <span key={emotion} className="flex items-center gap-1.5">
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: EMOTION_COLORS[emotion] }}
+              />
+              <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
+                {EMOTION_LABELS[emotion]}
+              </span>
+            </span>
+          ))}
+        </div>
+
         {speechError && (
           <p className="mt-3 rounded-lg border border-amber-400/20 bg-amber-400/8 px-3 py-2 text-xs leading-relaxed text-amber-100">
             {speechError}
@@ -419,39 +518,44 @@ function SpeechScreen() {
         )}
 
         <div className="mt-4 space-y-2">
-          {lines.length === 0 && !interimText ? (
+          {interimAnalysis && (
+            <div
+              className="rounded-lg border border-primary/20 bg-primary/5 pl-3 pr-3 py-2.5"
+              style={{ borderLeft: `3px solid ${EMOTION_COLORS[interimAnalysis.overall]}` }}
+            >
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <SentimentBadge analysis={interimAnalysis} />
+                <span className="shrink-0 font-mono text-[10px] text-faint">live</span>
+              </div>
+              <p className="text-sm leading-relaxed">
+                <ColoredCaption tokens={interimAnalysis.tokens} dim />
+                <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-primary align-middle" />
+              </p>
+            </div>
+          )}
+
+          {lines.length === 0 && !interimAnalysis ? (
             <div className="rounded-lg border border-dashed border-line bg-paper-2 px-4 py-6 text-center text-sm text-faint">
-              Captions will appear here
+              Captions appear here, coloured word by word.
             </div>
           ) : (
             lines.map((line) => (
               <div
                 key={line.id}
                 className="rounded-lg border border-line bg-paper-2 pl-3 pr-3 py-2.5"
-                style={{ borderLeft: `3px solid ${EMOTION_COLORS[line.emotion]}` }}
+                style={{ borderLeft: `3px solid ${EMOTION_COLORS[line.analysis.overall]}` }}
               >
                 <div className="mb-1 flex items-center justify-between gap-3">
-                  <span
-                    className="font-mono text-[10px] font-bold uppercase tracking-[0.12em]"
-                    style={{ color: EMOTION_COLORS[line.emotion] }}
-                  >
-                    {line.emotion}
-                  </span>
+                  <SentimentBadge analysis={line.analysis} />
                   <span className="shrink-0 font-mono text-[10px] text-faint">
                     {line.confidence == null ? timeAgo(line.timestamp) : `${Math.round(line.confidence * 100)}%`}
                   </span>
                 </div>
-                <p className="text-sm leading-relaxed">{line.text}</p>
+                <p className="text-sm leading-relaxed">
+                  <ColoredCaption tokens={line.analysis.tokens} />
+                </p>
               </div>
             ))
-          )}
-          {interimText && (
-            <div className="rounded-lg border border-primary/20 bg-primary/5 pl-3 pr-3 py-2.5">
-              <p className="text-sm leading-relaxed text-ink/60">
-                {interimText}
-                <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-primary" />
-              </p>
-            </div>
           )}
         </div>
 
@@ -470,11 +574,19 @@ function SpeechScreen() {
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-bold tracking-tight">Text to speech</h3>
-            <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-mist">
-              {speaking ? 'Playing' : 'Voice output'}
+            <p className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-mist">
+              <Volume2 size={11} />
+              {ttsState === 'playing' ? 'Playing' : ttsState === 'loading' ? 'Synthesizing\u2026' : 'Natural voice'}
             </p>
           </div>
         </div>
+
+        {!ttsReady && (
+          <p className="mb-3 rounded-lg border border-amber-400/20 bg-amber-400/8 px-3 py-2 text-xs leading-relaxed text-amber-100">
+            Add <span className="font-mono">VITE_GEMINI_API_KEY</span> to your environment to enable the
+            natural voice.
+          </p>
+        )}
 
         {ttsError && (
           <p className="mb-3 rounded-lg border border-amber-400/20 bg-amber-400/8 px-3 py-2 text-xs leading-relaxed text-amber-100">
@@ -496,30 +608,36 @@ function SpeechScreen() {
               Voice
             </span>
             <select
-              value={selectedVoiceName}
-              onChange={(event) => setSelectedVoiceName(event.target.value)}
+              value={selectedVoice}
+              onChange={(event) => setSelectedVoice(event.target.value)}
               className="w-full rounded-lg border border-line bg-paper-2 py-2.5 pl-12 pr-3 text-sm text-ink outline-none focus:border-primary"
             >
-              {voices.map((voice) => (
+              {NATURAL_VOICES.map((voice) => (
                 <option key={voice.name} value={voice.name}>
-                  {voice.name}
+                  {voice.name} -   {voice.tone}
                 </option>
               ))}
             </select>
           </label>
           <button
-            onClick={speaking ? stopSpeaking : speak}
-            disabled={!speakText.trim()}
+            onClick={ttsState === 'idle' ? speak : stopSpeaking}
+            disabled={(!speakText.trim() || !ttsReady) && ttsState === 'idle'}
             className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg transition active:scale-95 ${
-              speaking
+              ttsState !== 'idle'
                 ? 'bg-danger text-white'
-                : speakText.trim()
+                : speakText.trim() && ttsReady
                   ? 'bg-primary text-white'
                   : 'bg-paper-2 text-faint'
             }`}
-            aria-label={speaking ? 'Stop speaking' : 'Speak text'}
+            aria-label={ttsState === 'idle' ? 'Speak text' : 'Stop speaking'}
           >
-            {speaking ? <Square size={15} fill="currentColor" /> : <Send size={16} />}
+            {ttsState === 'loading' ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : ttsState === 'playing' ? (
+              <Square size={15} fill="currentColor" />
+            ) : (
+              <Send size={16} />
+            )}
           </button>
         </div>
       </section>
