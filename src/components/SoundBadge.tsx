@@ -14,7 +14,7 @@ export function SoundBadge({
         className="flex h-full w-full items-center justify-center rounded-full"
         style={{
           border: `2px solid ${resolved.color}`,
-          background: 'rgba(13,13,13,0.8)',
+          background: 'var(--color-paper)',
         }}
       >
         <span style={{ fontSize: size * 0.45, lineHeight: 1 }} aria-hidden="true">

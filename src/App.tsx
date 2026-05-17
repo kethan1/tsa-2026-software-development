@@ -6,10 +6,12 @@ import {
   MessageSquareText,
   Mic,
   MicOff,
+  Moon,
   Radio,
   Send,
   Settings,
   Square,
+  Sun,
   Trash2,
   Volume2,
 } from 'lucide-react';
@@ -25,6 +27,7 @@ import {
 import ARView from './components/ARView';
 import { SoundBadge } from './components/SoundBadge';
 import { useInstallPrompt } from './pwa';
+import { useTheme, type Theme } from './theme';
 import {
   analyzeSentence,
   EMOTION_COLORS,
@@ -135,6 +138,7 @@ export default function App() {
   const [settings, setSettings] = useState<UserSettings>(defaultSettings);
   const [dismissedAlertId, setDismissedAlertId] = useState<string | null>(null);
   const { canInstall, installed, promptInstall } = useInstallPrompt();
+  const { theme, toggleTheme } = useTheme();
 
   const critical = liveEvents.find((event) => resolveEvent(event).isCritical);
   const showCriticalPopup = screen === 'main' && critical != null && dismissedAlertId !== critical.id;
@@ -149,7 +153,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-dvh w-full justify-center bg-canvas text-ink sm:items-center sm:bg-[#070708] sm:p-6">
+    <div className="flex h-dvh w-full justify-center bg-canvas text-ink sm:items-center sm:bg-[var(--color-backdrop)] sm:p-6">
       <div className="relative flex h-full w-full max-w-md flex-col overflow-hidden bg-canvas sm:h-[860px] sm:max-h-full sm:w-[392px] sm:rounded-[3.2rem] sm:shadow-[0_40px_90px_-25px_rgba(0,0,0,0.95)] sm:ring-1 sm:ring-white/10">
         <main className="relative flex-1 min-h-0 pb-20">
           <Screen active={screen === 'main'}>
@@ -171,6 +175,8 @@ export default function App() {
             <SettingsScreen
               settings={settings}
               onSettingsChange={setSettings}
+              theme={theme}
+              onToggleTheme={toggleTheme}
               canInstall={canInstall}
               installed={installed}
               onInstall={promptInstall}
@@ -497,13 +503,13 @@ function SpeechScreen() {
         </div>
 
         {speechError && (
-          <p className="mt-3 rounded-lg border border-amber-400/20 bg-amber-400/8 px-3 py-2 text-xs leading-relaxed text-amber-100">
+          <p className="mt-3 rounded-lg border border-notice-line bg-notice-bg px-3 py-2 text-xs leading-relaxed text-notice">
             {speechError}
           </p>
         )}
 
         {recording && (
-          <div className="mt-3 flex items-center gap-3 rounded-lg border border-red-400/20 bg-red-400/5 px-4 py-3 text-white/80">
+          <div className="mt-3 flex items-center gap-3 rounded-lg border border-red-400/20 bg-red-400/5 px-4 py-3 text-ink">
             <span className="flex items-end gap-0.5" aria-hidden="true">
               {[0, 1, 2, 3].map((bar) => (
                 <span
@@ -582,14 +588,14 @@ function SpeechScreen() {
         </div>
 
         {!ttsReady && (
-          <p className="mb-3 rounded-lg border border-amber-400/20 bg-amber-400/8 px-3 py-2 text-xs leading-relaxed text-amber-100">
+          <p className="mb-3 rounded-lg border border-notice-line bg-notice-bg px-3 py-2 text-xs leading-relaxed text-notice">
             Add <span className="font-mono">VITE_GEMINI_API_KEY</span> to your environment to enable the
             natural voice.
           </p>
         )}
 
         {ttsError && (
-          <p className="mb-3 rounded-lg border border-amber-400/20 bg-amber-400/8 px-3 py-2 text-xs leading-relaxed text-amber-100">
+          <p className="mb-3 rounded-lg border border-notice-line bg-notice-bg px-3 py-2 text-xs leading-relaxed text-notice">
             {ttsError}
           </p>
         )}
@@ -696,19 +702,43 @@ function RecentSoundsScreen({ events, onClear }: { events: SoundEvent[]; onClear
 function SettingsScreen({
   settings,
   onSettingsChange,
+  theme,
+  onToggleTheme,
   canInstall,
   installed,
   onInstall,
 }: {
   settings: UserSettings;
   onSettingsChange: React.Dispatch<React.SetStateAction<UserSettings>>;
+  theme: Theme;
+  onToggleTheme: () => void;
   canInstall: boolean;
   installed: boolean;
   onInstall: () => void;
 }) {
+  const lightOn = theme === 'light';
   return (
     <ScreenShell title="Settings">
       <section className={`${CARD} p-4`}>
+        <div className="flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-sm font-bold tracking-tight">
+            {lightOn ? <Sun size={15} className="text-primary" /> : <Moon size={15} className="text-mist" />}
+            Light mode
+          </h3>
+          <button
+            onClick={onToggleTheme}
+            className={`h-6 w-10 rounded-full p-0.5 transition ${lightOn ? 'bg-primary' : 'bg-paper-2'}`}
+            aria-label="Toggle light mode"
+            aria-pressed={lightOn}
+          >
+            <span
+              className={`block h-5 w-5 rounded-full bg-white shadow-sm transition ${lightOn ? 'translate-x-4' : ''}`}
+            />
+          </button>
+        </div>
+      </section>
+
+      <section className={`${CARD} mt-4 p-4`}>
         <h3 className="mb-3 text-sm font-bold tracking-tight">Alert types</h3>
         <div className="grid grid-cols-2 gap-2">
           {CATEGORY_ORDER.map((category) => {
@@ -740,7 +770,7 @@ function SettingsScreen({
         </div>
       </section>
 
-      <section className={`${CARD} p-4`}>
+      <section className={`${CARD} mt-4 p-4`}>
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-bold tracking-tight">Haptics</h3>
           <button

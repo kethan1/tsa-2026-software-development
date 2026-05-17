@@ -34,7 +34,22 @@
 
     <style>
       html { background-color: #0d0d0d; }
+      html[data-theme="light"] { background-color: #f4f4f5; }
     </style>
+
+    <!-- Apply the saved theme before first paint so light-mode users don't see a
+         dark flash on reload. Kept in sync at runtime by src/theme.ts. -->
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem('sensesync-theme') === 'light') {
+            document.documentElement.setAttribute('data-theme', 'light');
+            var meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute('content', '#f4f4f5');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
